@@ -1,0 +1,52 @@
+本项目用到的第三方组件与许可
+================================
+
+生成时间：2026-11-18
+项目许可证：MIT（见 LICENSE）
+
+一、随程序分发的
+----------------
+
+1) .NET 8 运行时（Microsoft.NETCore.App / WindowsDesktop.App）
+   - 许可证：MIT
+   - 版权：Copyright (c) .NET Foundation and Contributors
+   - 主页：https://github.com/dotnet/runtime
+   - 使用方式：build.ps1 -Publish 采用「单文件自包含」发布，运行时程序集
+     会被内嵌进生成的 CuktechTray.exe / CuktechTray-Setup.exe。
+     这两个 exe 只在 Releases 页面分发，不进仓库。
+   - MIT 许可要求保留版权与许可声明：运行时相关声明随 .NET 发布，
+     见 https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
+
+2) Windows Forms（含在 WindowsDesktop.App 内）
+   - 许可证：MIT
+   - 用途：托盘图标（NotifyIcon）、自绘窗口、安装向导
+
+3) System.Text.Json（含在 Microsoft.NETCore.App 内）
+   - 许可证：MIT
+   - 用途：settings.json 与小米云接口的解析
+
+二、开发期使用、不随程序分发的
+------------------------------
+
+4) .NET 8 SDK
+   - 许可证：MIT
+   - 用途：编译。使用者自己安装
+
+5) WiX Toolset —— 未使用
+   - 本项目安装包是手写的 WinForms 程序（setup/ 目录），不依赖 WiX
+
+6) Pillow（Python 图像库）
+   - 许可证：HPND（Historical Permission Notice and Disclaimer）
+   - 用途：tools/make-banner.py 生成 assets/ 里的 README 横幅
+
+7) Rust 生态（仅 src/probe-rs/ 的实验代码，不参与正式构建）
+   - btleplug（MIT/Apache-2.0 双许可）、tray-icon（MIT）、windows crate（MIT/Apache-2.0）
+   - 详见 src/probe-rs/Cargo.lock
+
+三、参考过的第三方实现（未复制进本仓库）
+----------------------------------------
+
+8) kairui1108/cuktech-ble-ha    —— MIT
+9) kairui1108/cuktech-ble-esp32 —— MIT
+
+协议规格是照它们的公开描述 + 本机实测反推后独立实现的。

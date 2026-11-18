@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>CuktechTray</AssemblyName>
+    <RootNamespace>CuktechTray</RootNamespace>
+    <Version>0.2.3</Version>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 协议层与 WinRT GATT 链路：与探针共用同一份源码，避免双份维护 -->
+    <Compile Include="..\CuktechMible\*.cs" Link="Protocol\%(Filename)%(Extension)" />
+    <Compile Include="..\probe-cs\WinRtMibleLink.cs" Link="Protocol\WinRtMibleLink.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 小米云扫码登录：首次使用向导用它自动拿到设备的 BLE token -->
+    <ProjectReference Include="..\CuktechLogin\CuktechLogin.csproj" />
+  </ItemGroup>
+
+</Project>

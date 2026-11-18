@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CuktechLogin</AssemblyName>
+    <RootNamespace>CuktechLogin</RootNamespace>
+    <Version>0.1.0</Version>
+    <!-- 托盘程序是 WinExe, 这里只做纯 net8.0 类库, 不依赖 WinForms -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DevCheck 是同一目录下的独立验证程序(有自己的 .csproj), 不能编进类库 -->
+    <Compile Remove="DevCheck\**\*.cs" />
+    <None Remove="DevCheck\**" />
+    <EmbeddedResource Remove="DevCheck\**" />
+  </ItemGroup>
+
+</Project>

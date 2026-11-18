@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    酷态科 10 号 Ultra 托盘功率表 · 安装程序
+
+    ⚠ 本工程不能直接 dotnet build：Payload\payload.bin 与 Payload\PayloadInfo.g.cs
+      都由项目根的 build-setup.ps1 从 ..\dist\CuktechTray.exe 生成，先跑那个脚本。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CuktechTray-Setup</AssemblyName>
+    <RootNamespace>CuktechTraySetup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- 图标由 build-setup.ps1 从主程序 exe 里抽出来，缺失时退回默认图标 -->
+    <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
+    <Version>0.2.3</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NeutralLanguage>zh-Hans</NeutralLanguage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 主程序本体：dist\CuktechTray.exe 经 Deflate 压缩后的字节 -->
+    <EmbeddedResource Include="Payload\payload.bin" LogicalName="payload.bin" />
+  </ItemGroup>
+
+</Project>

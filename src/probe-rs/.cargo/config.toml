@@ -1,0 +1,4 @@
+# 本机实测：默认并行度（16）会把提交内存打爆，rustc 随机失败/产出 0 字节 rlib。
+# 详见 docs/rust-spike.md 坑 7。
+[build]
+jobs = 2
