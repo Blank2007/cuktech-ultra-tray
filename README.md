@@ -287,7 +287,7 @@ Explorer 重启后它会在 1 秒内自动重新挂上。
 
 ### 联系我
 
-有问题就开 [Issue](https://github.com/Blank2007/cuktech-ultra-tray/issues)。
+有问题就开 [Issue](https://github.com/Blank2007/cuktech-ultra-tray/issues)。或发送邮件至1553008865@qq.com
 
 ### 最后说一句
 
