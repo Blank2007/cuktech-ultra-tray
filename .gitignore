@@ -1,0 +1,30 @@
+# 构建产物
+dist/
+**/bin/
+**/obj/
+**/target/
+*.pdb
+
+# 安装程序打包时生成的内嵌载荷（约 66 MB，构建时由 build-setup.ps1 重新生成）
+setup/Payload/
+
+# 本机运行数据
+settings.json
+session.json
+logs/
+*.log
+out/
+__pycache__/
+*.pyc
+
+# 截图临时文件
+docs/tmp-*.png
+
+# 下载下来做参考的第三方源码
+research/
+
+# 编辑器 / 系统
+.vs/
+.idea/
+*.user
+Thumbs.db
