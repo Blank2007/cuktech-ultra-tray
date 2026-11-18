@@ -49,7 +49,7 @@
 
 > **想直接拿现成的？**
 > * 安装程序 ⬇️ **[最新版本](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)**（文件名形如 `CuktechTray-Setup-0.2.3.exe`，127 MB）
-> * 绿色版 ⬇️ **[CuktechTray.exe](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest/download/CuktechTray.exe)**（69 MB，免安装）
+> * 绿色版 ⬇️ **[最新版本](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)**（文件名形如 `CuktechTray-0.2.3.exe`，69 MB，免安装）
 >
 > 本仓库只放源码，两个 exe 都不进仓库（加起来近 200 MB），请到 [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) 页面下载。
 > 两个 exe 都**没有代码签名**，第一次运行时 Windows 可能弹「已保护你的电脑」蓝框，点 **更多信息 → 仍要运行** 即可。

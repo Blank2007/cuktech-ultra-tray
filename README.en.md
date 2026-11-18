@@ -49,7 +49,7 @@ click it and you get voltage / current / power for all four ports on one screen,
 
 > **Want one ready-made?**
 > * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.2.3.exe`, 127 MB)
-> * Portable ⬇️ **[CuktechTray.exe](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest/download/CuktechTray.exe)** (69 MB, no installation)
+> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.2.3.exe`, 69 MB, no installation)
 >
 > This repo holds source only; neither exe is checked in (together they are nearly 200 MB), so please download them from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > Neither exe is **code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
