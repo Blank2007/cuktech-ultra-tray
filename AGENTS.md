@@ -52,7 +52,7 @@
 | --- | --- |
 | 托盘图标长什么样 | `src/CuktechTray/WattIcon.cs`、`WattStyle.cs` |
 | 功率面板排版 | `src/CuktechTray/PanelForm.cs`、`UiTheme.cs` |
-| 控制页 | `src/CuktechTray/ControlForm.cs` |
+| 面板的控制页签（四路开关） | `src/CuktechTray/PanelForm.cs`（0.3.0 起与读数页同一个窗口，`Tab.Control`） |
 | 任务栏那一小块 | `src/CuktechTray/TaskbarWidget.cs`（挂载、拖拽、alpha 绘制都在里面） |
 | 协议 / 认证 | `src/CuktechMible/` |
 | 扫码登录 | `src/CuktechLogin/` |

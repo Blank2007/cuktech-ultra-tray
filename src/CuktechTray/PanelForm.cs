@@ -3,11 +3,33 @@ using System.Runtime.InteropServices;
 
 namespace CuktechTray;
 
-/// <summary>无边框深色浮层：显示总功率 + 四个口的电压 / 电流 / 功率。</summary>
+/// <summary>
+/// 无边框深色浮层：顶部两个页签，一页看功率、一页直接开关四路输出。
+///
+/// 0.3.0 之前「看读数」和「改开关」是两个独立窗口（PanelForm / ControlForm），
+/// 用户的原话是「点开直接看功率，顺手能开能关」，两个窗口来回点反而更麻烦，
+/// 所以合并成一个窗口：宽度不变，只在标题下面多一条 24px 的页签，
+/// 控制那一页把每一行的右侧腾出 48px 放开关，行高和读数页完全对齐。
+/// </summary>
 internal sealed class PanelForm : Form
 {
+    // ---- 设计尺寸（96 DPI 下的逻辑像素，实际按 DeviceDpi 缩放）----
     private const int DesignW = 320;
-    private const int DesignH = 328;
+    private const int DesignH = 360;
+
+    // ---- 页签条 ----
+    private const int TabY = 36;
+    private const int TabH = 24;
+    private const int TabW = 58;
+    private const int TabGap = 6;
+
+    // ---- 内容区（0.2.x 的老坐标整体下移 32，给页签条腾地方）----
+    private const int BigY = 68;      // 大数字
+    private const int LineY = 128;    // 分隔线
+    private const int HeadY = 134;    // 表头
+    private const int RowTop = 156;   // 第一行
+    private const int RowStep = 42;   // 行高
+    private const int FootY = 328;    // 页脚
 
     private static readonly Color BgTop = Color.FromArgb(34, 38, 45);
     private static readonly Color BgBottom = Color.FromArgb(20, 23, 28);
@@ -21,10 +43,17 @@ internal sealed class PanelForm : Form
 
     private float _s = 1f;
     private Font _fTitle = null!, _fStatus = null!, _fBig = null!, _fUnit = null!,
-                 _fHead = null!, _fName = null!, _fVal = null!, _fValBold = null!, _fFoot = null!;
+                 _fHead = null!, _fName = null!, _fVal = null!, _fValBold = null!,
+                 _fFoot = null!, _fTab = null!;
 
     private const string PinGlyph = "\uE718";
     private const string UnpinGlyph = "\uE77A";
+
+    /// <summary>哪一页：读数 or 控制。切页不改变窗口尺寸，只在同一块画布上换内容。</summary>
+    public enum Tab { Read, Control }
+
+    private readonly DeviceClient _client;
+    private Tab _tab = Tab.Read;
 
     private Snapshot _snap = new();
     private DateTime _shownAt;
@@ -34,6 +63,16 @@ internal sealed class PanelForm : Form
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _menuPin;
     private Font _fIcon = null!;
+
+    // ---- 控制页的下发状态 ----
+    private bool _busy;
+    private string _status = "";
+    private StatusKind _statusKind = StatusKind.None;
+    private enum StatusKind { None, Busy, Ok, Bad }
+
+    /// <summary>当前鼠标悬停的位置：图钉 / 页签 / 某一路的开关。</summary>
+    private int _hoverTab = -1;
+    private int _hoverSwitch = -1;
 
     /// <summary>守住「不许自己压在最上面」这条规矩的定时器，见 GuardTick。</summary>
     private readonly System.Windows.Forms.Timer _guard;
@@ -52,8 +91,16 @@ internal sealed class PanelForm : Form
     public event EventHandler? PinChanged;
     public event EventHandler? CloseRequested;
 
-    public PanelForm()
+    /// <summary>
+    /// 创建面板。
+    /// </summary>
+    /// <param name="client">后台设备客户端（托盘程序共用的那一个，不要另建）。</param>
+    /// <param name="settings">当前设置，只读着看，不在这里改。</param>
+    public PanelForm(DeviceClient client, Settings settings)
     {
+        _client = client;
+        _snap = client.Last;
+
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         // 这是一个普通窗口：不置顶、不抢焦点、会被别的窗口盖住。
@@ -65,6 +112,7 @@ internal sealed class PanelForm : Form
         DoubleBuffered = true;
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint |
                  ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        KeyPreview = true;
 
         _menuPin = new ToolStripMenuItem("固定到桌面", null, (_, _) => TogglePin()) { Font = new Font("Microsoft YaHei UI", 9.5f) };
         var menuClose = new ToolStripMenuItem("关闭面板", null, (_, _) =>
@@ -100,6 +148,24 @@ internal sealed class PanelForm : Form
     /// <summary>最后一次被自动收起的时间，用于避免"点托盘图标=先收起再弹出"的抖动。</summary>
     public DateTime LastAutoHiddenAt { get; private set; }
 
+    /// <summary>当前停在哪一页。</summary>
+    public Tab CurrentTab => _tab;
+
+    /// <summary>切页。切到控制页时重新取一次最新读数，免得看到上任窗口留下的旧值。</summary>
+    public void SetTab(Tab tab)
+    {
+        if (_tab == tab) return;
+        _tab = tab;
+        if (tab == Tab.Control)
+        {
+            _snap = _client.Last;
+            _status = "";
+            _statusKind = StatusKind.None;
+        }
+        _hoverSwitch = -1;
+        Invalidate();
+    }
+
     public void Apply(Snapshot snap)
     {
         _snap = snap;
@@ -119,6 +185,7 @@ internal sealed class PanelForm : Form
         _fVal = MakeFont("Segoe UI", 13f * _s);
         _fValBold = MakeFont("Segoe UI", 14f * _s, FontStyle.Bold);
         _fFoot = MakeFont("Microsoft YaHei UI", 10.5f * _s);
+        _fTab = MakeFont("Microsoft YaHei UI", 11.5f * _s);
         _fIcon = MakeFont("Segoe MDL2 Assets", 13f * _s);
 
         using var path = RoundRect(new Rectangle(0, 0, Width, Height), (int)(14 * _s));
@@ -138,6 +205,8 @@ internal sealed class PanelForm : Form
         Invalidate();
     }
 
+    // ==================== 绘制 ====================
+
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
@@ -154,7 +223,7 @@ internal sealed class PanelForm : Form
 
         // ---- 标题行 ----
         float pad = 16 * s;
-        Draw(g, "酷态科 10 号 Ultra", _fTitle, Fg, pad, 12 * s, 180 * s, 22 * s);
+        Draw(g, "酷态科 10 号 Ultra", _fTitle, Fg, pad, 12 * s, 150 * s, 22 * s);
 
         var (dotColor, statusText) = _snap.Connected
             ? (Ok, _snap.Status)
@@ -173,38 +242,143 @@ internal sealed class PanelForm : Form
             Pinned ? Ok : (_pinHover ? Fg : Faint),
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
-        // ---- 总功率：数字颜色随功率高低变（灰 → 绿 → 黄 → 红）----
+        // ---- 页签 ----
+        DrawTab(g, TabReadRect, "读数", _tab == Tab.Read, _hoverTab == 0);
+        DrawTab(g, TabControlRect, "控制", _tab == Tab.Control, _hoverTab == 1);
+
+        // ---- 当前页内容 ----
+        if (_tab == Tab.Read) PaintReadPage(g);
+        else PaintControlPage(g);
+
+        // ---- 页脚：两页共用 ----
+        var (footText, footColor) = FootStatus();
+        Draw(g, footText, _fFoot, footColor, pad, FootY * s, Width - pad * 2, 18 * s);
+    }
+
+    /// <summary>读数页：总功率大数字 + 四口的电压电流功率（0.2.x 的老样子，只是整体下移了 32px）。</summary>
+    private void PaintReadPage(Graphics g)
+    {
+        float s = _s;
+        float pad = 16 * s;
+
+        // 总功率：数字颜色随功率高低变（灰 → 绿 → 黄 → 红）
         double total = _snap.TotalWatts;
         string big = _snap.Connected ? FormatWatts(total) : "--";
         Color bigColor = _snap.Connected ? TotalColor(total) : Faint;
-        var bigRect = new Rectangle((int)pad, (int)(36 * s), (int)(220 * s), (int)(52 * s));
+        var bigRect = new Rectangle((int)pad, (int)(BigY * s), (int)(220 * s), (int)(52 * s));
         TextRenderer.DrawText(g, big, _fBig, bigRect, bigColor,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         float bigW = Measure(g, big, _fBig);
-        Draw(g, "W", _fUnit, Dim, pad + bigW + 4 * s, 50 * s, 30 * s, 24 * s);
-        Draw(g, "总输出", _fHead, Faint, pad + bigW + 40 * s, 52 * s, 70 * s, 20 * s);
+        Draw(g, "W", _fUnit, Dim, pad + bigW + 4 * s, (BigY + 14) * s, 30 * s, 24 * s);
+        Draw(g, "总输出", _fHead, Faint, pad + bigW + 40 * s, (BigY + 16) * s, 70 * s, 20 * s);
 
         using (var pen = new Pen(Color.FromArgb(44, 49, 57), Math.Max(1, s)))
-            g.DrawLine(pen, pad, 96 * s, Width - pad, 96 * s);
+            g.DrawLine(pen, pad, LineY * s, Width - pad, LineY * s);
 
-        // ---- 表头 ----
-        float yHead = 102 * s;
-        Draw(g, "接口", _fHead, Faint, pad, yHead, 40 * s, 18 * s);
-        Draw(g, "电压", _fHead, Faint, 56 * s, yHead, 76 * s, 18 * s, TextFormatFlags.Right);
-        Draw(g, "电流", _fHead, Faint, 132 * s, yHead, 76 * s, 18 * s, TextFormatFlags.Right);
-        Draw(g, "功率", _fHead, Faint, 208 * s, yHead, (int)(96 * s), 18 * s, TextFormatFlags.Right);
+        // 表头
+        Draw(g, "接口", _fHead, Faint, pad, HeadY * s, 40 * s, 18 * s);
+        Draw(g, "电压", _fHead, Faint, 56 * s, HeadY * s, 76 * s, 18 * s, TextFormatFlags.Right);
+        Draw(g, "电流", _fHead, Faint, 132 * s, HeadY * s, 76 * s, 18 * s, TextFormatFlags.Right);
+        Draw(g, "功率", _fHead, Faint, 208 * s, HeadY * s, (int)(96 * s), 18 * s, TextFormatFlags.Right);
 
-        // ---- 四口 ----
         for (int i = 0; i < 4; i++)
-            DrawPort(g, _snap.Ports[i], 124 * s + i * 42 * s, i);
+            DrawPort(g, _snap.Ports[i], RowTop * s + i * RowStep * s, i);
+    }
 
-        // ---- 页脚 ----
-        string foot = _snap.Error is { Length: > 0 } err
-            ? err
-            : _snap.At == DateTime.MinValue
-                ? "等待数据…"
-                : $"固件 {(_snap.Firmware.Length > 0 ? _snap.Firmware : "?")} · 更新 {_snap.At:HH:mm:ss}";
-        Draw(g, foot, _fFoot, _snap.Error is { Length: > 0 } ? Bad : Faint, pad, 296 * s, Width - pad * 2, 18 * s);
+    /// <summary>控制页：每行左边读数、右边开关。行高和读数页一模一样，切页时眼睛不用重新找位置。</summary>
+    private void PaintControlPage(Graphics g)
+    {
+        float s = _s;
+        float pad = 16 * s;
+
+        // 顶部空白不该白瞎——顺手把「点了就生效」这件事说清楚
+        Draw(g, "点右边的开关，充电器立刻就断/通，不用再保存", _fFoot, Dim, pad, 96 * s, 260 * s, 18 * s);
+
+        // 表头：这一页不标电压/电流/功率，而是「读数 + 开关」
+        Draw(g, "接口", _fHead, Faint, pad, HeadY * s, 40 * s, 18 * s);
+        Draw(g, "实时读数", _fHead, Faint, 54 * s, HeadY * s, 120 * s, 18 * s);
+        Draw(g, "开关", _fHead, Faint, 256 * s, HeadY * s, 48 * s, 18 * s, TextFormatFlags.Right);
+
+        for (int i = 0; i < 4; i++)
+            DrawControlRow(g, _snap.Ports[i], RowTop * s + i * RowStep * s, i);
+    }
+
+    private void DrawControlRow(Graphics g, PortReading p, float top, int index)
+    {
+        float s = _s;
+        float pad = 16 * s;
+        bool on = p.Enabled;
+
+        // 隔行一层极淡的底（和读数页同一套），四行扫起来不串行
+        if (index % 2 == 1)
+        {
+            var band = new Rectangle((int)(10 * s), (int)(top - 5 * s),
+                (int)(Width - 20 * s), (int)(32 * s));
+            using var bandPath = RoundRect(band, (int)(8 * s));
+            using var bandBrush = new SolidBrush(Color.FromArgb(11, 255, 255, 255));
+            g.FillPath(bandBrush, bandPath);
+        }
+
+        // 行首竖色条：跟读数页一个语言，颜色就是这一路的功率色
+        var barColor = !p.Enabled ? Color.FromArgb(70, 76, 86)
+                     : p.Working ? WattColor(p.Watts)
+                     : Color.FromArgb(58, 63, 72);
+        var bar = new Rectangle((int)(4 * s), (int)(top + 4 * s), (int)(3 * s), (int)(14 * s));
+        using (var barPath = RoundRect(bar, (int)(1.5f * s)))
+        using (var barBrush = new SolidBrush(barColor))
+            g.FillPath(barBrush, barPath);
+
+        Draw(g, p.Name, _fName, on ? Fg : Color.FromArgb(80, 85, 94), pad, top, 34 * s, 22 * s);
+
+        string vals;
+        Color valColor;
+        if (!p.Enabled) { vals = "已断电"; valColor = Color.FromArgb(95, 100, 109); }
+        else if (!p.HasData) { vals = "—"; valColor = Color.FromArgb(95, 100, 109); }
+        else if (p.Idle) { vals = "空载"; valColor = Dim; }
+        else
+        {
+            vals = $"{p.Volts:F1}V · {p.Amps:F2}A · {p.Watts:F1}W";
+            valColor = Fg;
+        }
+        Draw(g, vals, _fVal, valColor, 54 * s, top, 196 * s, 22 * s);
+
+        DrawSwitch(g, SwitchRect(index), p.Enabled, _hoverSwitch == index);
+    }
+
+    /// <summary>开关本体：胶囊底 + 滑块 + 开/关字样。连不上充电器时整体压暗，看得出点了也没用。</summary>
+    private void DrawSwitch(Graphics g, Rectangle r, bool on, bool hover)
+    {
+        float s = _s;
+        if (r.Width < 8 || r.Height < 6) return;
+
+        bool canWrite = _client.IsReady && _snap.Connected && !_busy;
+        Color track = on
+            ? (canWrite ? Ok : Color.FromArgb(56, 96, 82))
+            : (canWrite ? Color.FromArgb(74, 80, 92) : Color.FromArgb(58, 63, 72));
+
+        // 圆角半径必须收敛到「短半轴」，不然 RoundRect 在小尺寸下会画成一个空路径
+        int radius = Math.Min(r.Width, r.Height) / 2;
+        using (var path = RoundRect(r, radius))
+        {
+            using (var b = new SolidBrush(track)) g.FillPath(b, path);
+            using (var pen = new Pen(Color.FromArgb(hover ? 170 : 52, 255, 255, 255), 1f))
+                g.DrawPath(pen, path);
+        }
+
+        int d = r.Height - (int)(6 * s);
+        if (d < 6) d = r.Height - 2;
+        if (d < 4) return;
+        int ky = r.Y + (r.Height - d) / 2;
+        int kx = on ? r.Right - d - (int)(3 * s) : r.X + (int)(3 * s);
+        using (var knob = new SolidBrush(canWrite ? Color.FromArgb(242, 246, 248) : Color.FromArgb(146, 154, 162)))
+            g.FillEllipse(knob, kx, ky, d, d);
+
+        // 开关上的「开 / 关」：滑到右边时字在左半边，滑到左边时字在右半边
+        string label = on ? "开" : "关";
+        var labelColor = on ? Color.FromArgb(16, 38, 30) : Color.FromArgb(214, 221, 229);
+        int lx = on ? r.X + (int)(7 * s) : r.X + d + (int)(5 * s);
+        int lw = r.Width - d - (int)(9 * s);
+        if (lw > 4) Draw(g, label, _fTab, labelColor, lx, r.Y, lw, r.Height);
     }
 
     /// <summary>右上角的连接状态：绿点 + 文字装在一个半透明胶囊里，比裸文字更像"状态"。</summary>
@@ -225,6 +399,19 @@ internal sealed class PanelForm : Form
         using (var b = new SolidBrush(dotColor))
             g.FillEllipse(b, rect.X + 8 * s, rect.Y + (h - dot) / 2, dot, dot);
         Draw(g, text, _fStatus, Fg, rect.X + 8 * s + dot + 6 * s, rect.Y, tw + 2 * s, h);
+    }
+
+    /// <summary>页签：选中的那个亮一点、描一圈绿边，没选中的只有薄薄一层底。</summary>
+    private void DrawTab(Graphics g, Rectangle r, string text, bool active, bool hover)
+    {
+        int alpha = active ? 34 : hover ? 18 : 10;
+        using (var path = RoundRect(r, r.Height / 2))
+        {
+            using (var b = new SolidBrush(Color.FromArgb(alpha, 255, 255, 255))) g.FillPath(b, path);
+            if (active)
+                using (var pen = new Pen(Color.FromArgb(70, Ok))) g.DrawPath(pen, path);
+        }
+        Draw(g, text, _fTab, active ? Fg : Faint, r.X, r.Y, r.Width, r.Height, TextFormatFlags.HorizontalCenter);
     }
 
     private void DrawPort(Graphics g, PortReading p, float top, int index)
@@ -275,6 +462,26 @@ internal sealed class PanelForm : Form
     private static Color TotalColor(double w) => WattStyle.Total(w);
     private static string FormatWatts(double w) => WattStyle.Format(w);
 
+    /// <summary>页脚文字：控制页有下发结果时优先显示它，其余时候显示固件版本和更新时间。</summary>
+    private (string Text, Color Color) FootStatus()
+    {
+        if (_status.Length > 0)
+        {
+            Color c = _statusKind switch
+            {
+                StatusKind.Ok => Ok,
+                StatusKind.Bad => Bad,
+                StatusKind.Busy => Dim,
+                _ => Faint,
+            };
+            return (_status, c);
+        }
+
+        if (_snap.Error is { Length: > 0 } err) return (err, Bad);
+        if (_snap.At == DateTime.MinValue) return ("等待数据…", Faint);
+        return ($"固件 {(_snap.Firmware.Length > 0 ? _snap.Firmware : "?")} · 更新 {_snap.At:HH:mm:ss}", Faint);
+    }
+
     private void Draw(Graphics g, string text, Font font, Color color,
         float x, float y, float w, float h, TextFormatFlags align = TextFormatFlags.Left)
     {
@@ -302,6 +509,90 @@ internal sealed class PanelForm : Form
         return path;
     }
 
+    // ==================== 命中区域 ====================
+
+    private Rectangle TabReadRect => new((int)(16 * _s), (int)(TabY * _s), (int)(TabW * _s), (int)(TabH * _s));
+
+    private Rectangle TabControlRect
+    {
+        get
+        {
+            var r = TabReadRect;
+            return new Rectangle(r.Right + (int)(TabGap * _s), r.Y, r.Width, r.Height);
+        }
+    }
+
+    // 竖直方向跟左边那行字对齐：行文字占 22*s 且垂直居中，所以开关中心也落在 top + 11*s
+    private Rectangle SwitchRect(int i) => new(
+        Width - (int)(16 * _s) - (int)(48 * _s),
+        (int)((RowTop + i * RowStep - 3) * _s),
+        (int)(48 * _s),
+        (int)(28 * _s));
+
+    private int SwitchHit(Point p)
+    {
+        if (_tab != Tab.Control) return -1;
+        for (int i = 0; i < 4; i++)
+            if (SwitchRect(i).Contains(p)) return i;
+        return -1;
+    }
+
+    private Rectangle PinButtonRect
+    {
+        get
+        {
+            int size = (int)(20 * _s);
+            return new Rectangle(Width - (int)(16 * _s) - size, (int)(10 * _s), size, size);
+        }
+    }
+
+    // ==================== 与设备交互 ====================
+
+    /// <summary>点某一路的开关。命令走异步，界面上先显示「正在打开…」，回读结果写进页脚。</summary>
+    private async Task TogglePortAsync(int index)
+    {
+        if (_busy) return;
+
+        var port = _snap.Ports[index];
+        bool want = !port.Enabled;
+        string act = want ? "打开" : "关闭";
+
+        if (!_client.IsReady || !_snap.Connected)
+        {
+            SetStatus($"还没连上充电器，无法{act} {port.Name}", StatusKind.Bad);
+            return;
+        }
+
+        _busy = true;
+        SetStatus($"正在{act} {port.Name} …", StatusKind.Busy);
+        try
+        {
+            var res = await _client.SetPortEnabledAsync(index, want);
+            if (res.Ok)
+                SetStatus($"{port.Name} 已{act}（设备回读 0x{_client.PortSwitch:x2}）", StatusKind.Ok);
+            else
+                SetStatus($"{port.Name} {act}失败：{res.Error}", StatusKind.Bad);
+        }
+        catch (Exception ex)
+        {
+            // 兜底：控制命令本身不会抛，但绝不能让异常把窗口打死
+            SetStatus($"{port.Name} {act}失败：{ex.Message}", StatusKind.Bad);
+        }
+        finally
+        {
+            _busy = false;
+            _snap = _client.Last;
+            Invalidate();
+        }
+    }
+
+    private void SetStatus(string text, StatusKind kind)
+    {
+        _status = text;
+        _statusKind = kind;
+        Invalidate();
+    }
+
     // ---- 交互：点空白处拖动、Esc 关闭、失焦自动收起 ----
 
     private bool _pinHover;
@@ -313,15 +604,6 @@ internal sealed class PanelForm : Form
         _tip ??= new ToolTip { InitialDelay = 200, AutoPopDelay = 3000, ShowAlways = true };
         var r = PinButtonRect;
         _tip.Show(Pinned ? "取消固定（收回到托盘）" : "固定到桌面，一直留着", this, r.Right - r.Width / 2, r.Bottom + 4, 2500);
-    }
-
-    private Rectangle PinButtonRect
-    {
-        get
-        {
-            int size = (int)(20 * _s);
-            return new Rectangle(Width - (int)(16 * _s) - size, (int)(10 * _s), size, size);
-        }
     }
 
     /// <summary>按配置恢复固定的状态（不触发事件）。</summary>
@@ -403,11 +685,23 @@ internal sealed class PanelForm : Form
     {
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
+
         if (PinButtonRect.Contains(e.Location))
         {
             TogglePin();
             return;
         }
+
+        if (TabReadRect.Contains(e.Location)) { SetTab(Tab.Read); return; }
+        if (TabControlRect.Contains(e.Location)) { SetTab(Tab.Control); return; }
+
+        int sw = SwitchHit(e.Location);
+        if (sw >= 0)
+        {
+            _ = TogglePortAsync(sw);
+            return;
+        }
+
         _dragging = true;
         _dragOffset = e.Location;
     }
@@ -415,17 +709,39 @@ internal sealed class PanelForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        bool hover = PinButtonRect.Contains(e.Location);
-        if (hover != _pinHover)
+
+        bool pinHover = PinButtonRect.Contains(e.Location);
+        if (pinHover != _pinHover)
         {
-            _pinHover = hover;
-            Cursor = hover ? Cursors.Hand : Cursors.Default;
+            _pinHover = pinHover;
             Invalidate(PinButtonRect);
-            if (hover) ShowPinTip();
+            if (pinHover) ShowPinTip();
             else _tip?.Hide(this);
         }
+
+        int tabHover = TabReadRect.Contains(e.Location) ? 0 : TabControlRect.Contains(e.Location) ? 1 : -1;
+        int swHover = SwitchHit(e.Location);
+        if (tabHover != _hoverTab || swHover != _hoverSwitch)
+        {
+            _hoverTab = tabHover;
+            _hoverSwitch = swHover;
+            Invalidate();
+        }
+
+        bool hand = pinHover || tabHover >= 0 || swHover >= 0;
+        Cursor = hand ? Cursors.Hand : Cursors.Default;
+
         if (_dragging)
             Location = new Point(Location.X + e.X - _dragOffset.X, Location.Y + e.Y - _dragOffset.Y);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (_hoverTab == -1 && _hoverSwitch == -1) return;
+        _hoverTab = -1;
+        _hoverSwitch = -1;
+        Invalidate();
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -444,6 +760,11 @@ internal sealed class PanelForm : Form
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.Escape) { HideNow("esc"); return true; }
+        if (keyData == Keys.Tab)
+        {
+            SetTab(_tab == Tab.Read ? Tab.Control : Tab.Read);
+            return true;
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 

@@ -42,14 +42,14 @@ click it and you get voltage / current / power for all four ports on one screen,
 | 🖥️ **Four ports on one screen** | The panel opens straight onto C1 / C2 / C3 / A with voltage, current, power and total output, refreshed every second |
 | 🔵 **Bluetooth direct** | Full Xiaomi MIoT BLE authentication implemented from scratch (HKDF + HMAC + AES-CCM), measured at 3.7–4.6 s to authenticate; no Mi Home app in the loop, no gateway |
 | 📊 **Taskbar too** | A small strip at the far left of the taskbar, right next to the Start button, shows total power live — digits only, no icon and no background plate, and you can drag it somewhere else |
-| 🎛️ **It can control** | One switch per port on the control page to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
+| 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Single file** | The portable version is a 69 MB self-contained exe: copy it to any writable folder and double-click. The installer adds a wizard, shortcuts and a clean uninstaller |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.2.3.exe`, 127 MB)
-> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.2.3.exe`, 69 MB, no installation)
+> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.0.exe`, 127 MB)
+> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.0.exe`, 69 MB, no installation)
 >
 > This repo holds source only; neither exe is checked in (together they are nearly 200 MB), so please download them from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > Neither exe is **code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
@@ -111,9 +111,10 @@ That's it — later runs need no scanning, and authentication takes about 4 seco
 
 ![Power panel: four-port readings and total output](docs/shot-panel.png)
 
-A borderless dark window: drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
+A 320×360 borderless dark window with two tabs: **Read** (the default) and **Control**. Drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
 
-* The top row is total output and connection state; below it, four rows show voltage, current and power for C1 / C2 / C3 / A, with idle ports reading "Idle"
+* The top row holds the device name, the connection status pill (a green dot when connected, an amber dot when not) and the pin
+* **Read tab**: the large total output plus four rows of voltage, current and power for C1 / C2 / C3 / A, refreshed every second; ports with nothing plugged in read "Idle"
 * **It is just an ordinary window**: click the pin in the top right (or right-click the panel → Pin to desktop) and it stays on the desktop and remembers its position; click again to unpin.
   It is **not always-on-top and does not steal focus** — other windows cover it normally, it comes forward when clicked, and after a lock screen or user switch it never inexplicably ends up on top of everything
 
@@ -132,8 +133,10 @@ The small strip at the far left of the taskbar, right next to the Start button, 
 
 ![Control page: readings and switches for the four ports](docs/shot-control.png)
 
-One switch per port, so you can cut or restore power directly (C1 / C2 / C3 / A are controlled independently, and every write is read back and verified).
-There is also a refresh-now button and an auto-refresh toggle.
+The panel's second tab (right-click the tray icon → "Show control page", or add `--control` at launch to flip straight to it).
+
+* One switch per port, so you can cut or restore power directly (C1 / C2 / C3 / A are controlled independently, and every write is read back and verified; failures explain themselves at the bottom)
+* When the charger is not connected the switches are **dimmed into gray sliders** — they don't respond, and they shouldn't: if we can't read the device state we don't write anything into the device
 
 ### Tray icon
 
@@ -146,7 +149,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 * The program has no main window; it just lives in the tray. On startup it pops the panel once in the bottom right corner (numbers start flowing after about 4 s of authentication) and tucks it away if nobody touches it for 12 s
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
-* The full context menu: Show power panel / Control page / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
+* The full context menu: Show power panel / Show control page / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
   Icon style / Reconnect / Reconfigure device / Start with Windows / Open log / Settings file / Exit
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
@@ -162,7 +165,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 | `--tray-only` | Tray only, no panel (this is what start-with-Windows uses) |
 | `--pin` | Pin the panel to the desktop at startup |
 | `--panel` | Show the panel centered on screen without auto-hiding (for checking layout in screenshots) |
-| `--control` | Open the control page directly (with `--tray-only --control` only the control page opens) |
+| `--control` | Flip the panel straight to the control page as it appears (with `--tray-only --control` only the control page opens) |
 | `--setup` | Force the first-run wizard open (for switching accounts or devices) |
 | `--selftest` | Run the "connect → authenticate → read four ports" regression once, write the result to the log, exit code 0/1 |
 | `--dump-icons` | Export a sample sheet of the five icon styles as `icons.png` |
@@ -195,7 +198,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
    summed for display. The full PIID table and the power byte layout are in that same document
 3. **Control**: the port switch is a bit mask, and the value is read back and verified after every write ([docs/control-protocol.md](docs/control-protocol.md))
 4. **Login**: scanning follows the Mi Home app's QR-code login flow; once a serviceToken is obtained, the device-list API is called to fetch the token
-5. **Windows**: the panel and the control page are custom-drawn WinForms; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
+5. **Windows**: the panel (its two tabs included) is custom-drawn WinForms; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
    (the same trick as AF-Media-Bar), with details and the risk list in [docs/taskbar-component.md](docs/taskbar-component.md)
 
 ---

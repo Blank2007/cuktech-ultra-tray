@@ -23,7 +23,6 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _pinItem;
     private readonly ToolStripMenuItem _taskbarItem;
 
-    private ControlForm? _control;
     private TaskbarWidget? _widget;
 
     private IconStyle _iconStyle;
@@ -46,7 +45,11 @@ internal sealed class TrayApp : ApplicationContext
         _pinItem = new ToolStripMenuItem("固定面板到桌面", null, (_, _) => _panel!.TogglePin()) { Checked = settings.PanelPinned };
         _taskbarItem = new ToolStripMenuItem("在任务栏显示功率", null, (_, _) => ToggleTaskbarWidget()) { Checked = settings.TaskbarWidget };
 
-        _panel = new PanelForm();
+        // 面板要能直接下发开关命令，所以设备客户端得先建好——但事件订阅放到下面，
+        // 那会儿 _panel 才存在（OnSnapshot 里会碰它）。
+        _client = new DeviceClient(settings, ui);
+
+        _panel = new PanelForm(_client, settings);
         _panel.RestorePinned(settings.PanelPinned);
         _panel.PinChanged += (_, _) =>
         {
@@ -65,8 +68,8 @@ internal sealed class TrayApp : ApplicationContext
         // 任务栏里那一小块实时功率（任务栏的子窗口，不置顶、不进 Alt+Tab）
         if (settings.TaskbarWidget) _widget = new TaskbarWidget(settings, () => ShowPanel(true));
 
-        _client = new DeviceClient(settings, ui);
         _client.Updated += OnSnapshot;
+
 
         _tray = new NotifyIcon
         {
@@ -97,7 +100,7 @@ internal sealed class TrayApp : ApplicationContext
         var menu = new ContextMenuStrip { ShowImageMargin = false };
         UiTheme.Skin(menu);
         menu.Items.Add(new ToolStripMenuItem("显示功率面板", null, (_, _) => ShowPanel(true)) { Font = new Font(menu.Font, FontStyle.Bold) });
-        menu.Items.Add(new ToolStripMenuItem("控制页…", null, (_, _) => ShowControlPage()));
+        menu.Items.Add(new ToolStripMenuItem("显示控制页（四路开关）", null, (_, _) => ShowPanel(true, PanelForm.Tab.Control)));
         menu.Items.Add(_pinItem);
         menu.Items.Add(_taskbarItem);
         var posItem = new ToolStripMenuItem("重置任务栏数字位置", null, (_, _) => ResetTaskbarPosition());
@@ -136,7 +139,7 @@ internal sealed class TrayApp : ApplicationContext
             _tray.ShowBalloonTip(8000);
         }
 
-        // --control：启动后直接把控制页打开（做桌面快捷方式、截图都用得上）
+        // --control：启动后直接把面板翻到控制页（做桌面快捷方式、截图都用得上）
         if (openControl)
         {
             var open = new System.Windows.Forms.Timer { Interval = 500 };
@@ -144,7 +147,7 @@ internal sealed class TrayApp : ApplicationContext
             {
                 open.Stop();
                 open.Dispose();
-                ShowControlPage();
+                ShowPanel(true, PanelForm.Tab.Control);
             };
             open.Start();
         }
@@ -228,21 +231,6 @@ internal sealed class TrayApp : ApplicationContext
     }
 
     /// <summary>图标风格子菜单：切换后立即重画托盘图标并写回配置。</summary>
-    /// <summary>打开（或唤起）控制页。控制页只管四路开关，生命周期跟着托盘走。</summary>
-    private void ShowControlPage()
-    {
-        if (_control is { IsDisposed: false })
-        {
-            _control.ShowAtCurrent();
-            _control.Activate();
-            return;
-        }
-
-        _control = new ControlForm(_client, _settings);
-        _control.FormClosed += (_, _) => _control = null;
-        _control.ShowNear(Cursor.Position);
-    }
-
     private ToolStripMenuItem BuildIconStyleMenu()
     {
         var sub = new ToolStripMenuItem("托盘图标风格");
@@ -310,9 +298,12 @@ internal sealed class TrayApp : ApplicationContext
         ShowPanel(true);
     }
 
-    private void ShowPanel(bool anchorToCursor)
+    /// <param name="anchorToCursor">true = 出现在鼠标旁边；false = 停在右下角。</param>
+    /// <param name="tab">指定停在面板的哪一页；null = 保持原样。</param>
+    private void ShowPanel(bool anchorToCursor, PanelForm.Tab? tab = null)
     {
         _panel.Apply(_snap);
+        if (tab is { } wanted) _panel.SetTab(wanted);
         if (_panel.Pinned)
         {
             // 常驻模式：就是一个普通窗口，不置顶、不抢焦点，被别的窗口盖住就盖住。
