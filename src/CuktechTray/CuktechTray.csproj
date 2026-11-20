@@ -11,7 +11,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>CuktechTray</AssemblyName>
     <RootNamespace>CuktechTray</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
   </PropertyGroup>
 

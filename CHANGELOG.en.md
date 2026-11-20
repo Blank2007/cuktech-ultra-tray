@@ -1,8 +1,31 @@
 # Changelog
 
-This project has only ever run on one of my own machines and was never released publicly, so
+This project first ran on just one of my own machines and was later put on GitHub, so
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
+
+## 0.3.1 — 2026-11-20
+
+Two things: the "it is charging, yet it never connects" trap is plugged, and update checking was added.
+
+### Fixed
+
+- **The real reason it could not connect to the charger**: connecting called `BluetoothLEDevice.FromBluetoothAddressAsync` directly to get the device object,
+  but Windows' BLE device cache expires — restarting the Bluetooth service, swapping adapters, leaving it a day, or powering the device off for a while all clear it.
+  With an empty cache that call returns `null` every single time, **whether or not the charger is anywhere near**, so the log filled with
+  `FromBluetoothAddressAsync returned null` every 8 seconds and could keep that up all day (my own log had it for 22 hours, 8683 times).
+  What it does now: if the device cannot be fetched the first time, it runs one round of active advertising scanning (at most 8 s) to get it into the system cache, then fetches again, retrying at most 5 times.
+  Measured in the "null for 22 hours" state, a single scan and it authenticated immediately.
+- The error when no device can be scanned was reworded as well: "cannot find this device: make sure the charger is powered, within Bluetooth range, and that no phone is holding its connection",
+  which beats the old exception that carried nothing but an English API name.
+
+### Added
+
+- **Check for updates**: tray context menu → "Check for updates…", which asks GitHub Releases once; if there is a newer version it pops up the version number and asks whether to open the download page.
+  It only goes online when you click it — startup, connecting to the charger and polling readings never touch the network.
+  - .NET 8's HttpClient does not read the system proxy settings (a direct connection to api.github.com from mainland China mostly gets no JSON back), so the program reads
+    `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` from the registry itself, tries once through the proxy and once direct if that fails.
+  - It also works from the command line: `CuktechTray.exe --check-update`, which prints the current version, the latest version and which route it took.
 
 ## 0.3.0 — 2026-11-20
 

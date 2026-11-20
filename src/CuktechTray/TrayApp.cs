@@ -22,6 +22,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _pinItem;
     private readonly ToolStripMenuItem _taskbarItem;
+    private readonly ToolStripMenuItem _updateItem;
 
     private TaskbarWidget? _widget;
 
@@ -97,6 +98,8 @@ internal sealed class TrayApp : ApplicationContext
             Checked = IsAutoStartEnabled(),
         };
 
+        _updateItem = new ToolStripMenuItem("检查更新…", null, (_, _) => CheckUpdates());
+
         var menu = new ContextMenuStrip { ShowImageMargin = false };
         UiTheme.Skin(menu);
         menu.Items.Add(new ToolStripMenuItem("显示功率面板", null, (_, _) => ShowPanel(true)) { Font = new Font(menu.Font, FontStyle.Bold) });
@@ -111,6 +114,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("重新连接", null, (_, _) => _client.Restart()));
         menu.Items.Add(_autoStartItem);
         menu.Items.Add(new ToolStripMenuItem("重新配置设备…", null, (_, _) => ReconfigureDevice()));
+        menu.Items.Add(_updateItem);
         menu.Items.Add(new ToolStripMenuItem("打开日志", null, (_, _) => OpenLog()));
         menu.Items.Add(new ToolStripMenuItem("设置文件", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripSeparator());
@@ -455,6 +459,68 @@ internal sealed class TrayApp : ApplicationContext
             return key?.GetValue(RunValueName) is string s && s.Trim().Length > 0;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// 只有点了菜单才联网问一次 GitHub，平时（启动、连充电器、轮询读数）不发任何网络请求。
+    /// </summary>
+    private async void CheckUpdates()
+    {
+        var item = _updateItem;
+        item.Enabled = false;
+        item.Text = "正在检查更新…";
+        try
+        {
+            var r = await Task.Run(() => UpdateCheck.RunAsync());
+            var cur = UpdateCheck.Current;
+
+            if (!r.Ok)
+            {
+                LogSink.Write($"[update] 检查失败: {r.Error}");
+                MessageBox.Show(
+                    $"这次没检查成：{r.Error}\n\n" +
+                    $"可能是没网，或者 GitHub 一时连不上。稍后再试，也可以自己去这里看：\n{UpdateCheck.RepoUrl}/releases",
+                    "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (r.Latest is null)
+            {
+                MessageBox.Show($"没读出最新版本号，自己去这里看吧：\n{UpdateCheck.RepoUrl}/releases",
+                    "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (r.Latest > cur)
+            {
+                LogSink.Write($"[update] 有新版本 {r.Latest}（当前 {cur}）");
+                var go = MessageBox.Show(
+                    $"有新版了：{r.Latest}（你现在用的是 {cur}）。\n\n现在打开下载页？",
+                    "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (go == DialogResult.Yes) OpenUrl(r.ReleaseUrl);
+                item.Text = $"有新版本 {r.Latest}";
+                return;
+            }
+
+            MessageBox.Show($"已经是最新版（{cur}）。", "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            item.Text = "检查更新…";
+        }
+        finally
+        {
+            item.Enabled = true;
+        }
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write($"[update] 打开链接失败: {ex.Message}");
+        }
     }
 
     private void OpenLog()

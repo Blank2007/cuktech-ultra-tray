@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using CuktechMible;
 using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Foundation;
 
@@ -44,10 +45,57 @@ public sealed class WinRtMibleLink : IMibleLink, IAsyncDisposable
         _service = service;
     }
 
+    /// <summary>
+    /// Windows 的 BLE 设备缓存会过期（重启蓝牙、隔天、设备断电一段时间、换适配器之后都会清空）。
+    /// 缓存空的时候 FromBluetoothAddressAsync 一律返回 null，跟设备在不在旁边无关——
+    /// 这时候必须先用广播扫描把设备“扫”进缓存，再取设备对象。
+    /// </summary>
+    private static async Task<bool> ScanUntilSeenAsync(ulong address, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
+        watcher.Received += (_, e) =>
+        {
+            if (e.BluetoothAddress == address)
+                tcs.TrySetResult(true);
+        };
+        watcher.Stopped += (_, _) => tcs.TrySetResult(false);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        using var reg = timeout.Token.Register(() => tcs.TrySetResult(false));
+
+        Log("[link] 系统缓存里没有这台设备，开始扫广播（最多 8 秒）…");
+        watcher.Start();
+        try
+        {
+            bool seen = await tcs.Task.ConfigureAwait(false);
+            Log(seen ? "[link] 扫到设备广播，继续连接" : "[link] 8 秒内没扫到设备广播");
+            return seen;
+        }
+        finally
+        {
+            try { watcher.Stop(); } catch { /* 已停 */ }
+        }
+    }
+
     public static async Task<WinRtMibleLink> ConnectAsync(ulong address, CancellationToken ct = default)
     {
         var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(ct);
-        if (device is null) throw new InvalidOperationException("BluetoothLEDevice.FromBluetoothAddressAsync 返回 null");
+        if (device is null)
+        {
+            Log("[link] FromBluetoothAddressAsync 返回 null（设备还没进系统缓存），先扫一轮广播");
+            if (!await ScanUntilSeenAsync(address, ct).ConfigureAwait(false))
+                throw new InvalidOperationException("扫不到这台设备：确认充电器已通电、在蓝牙范围内，手机上也没占着它的连接");
+
+            for (int i = 0; i < 5 && device is null; i++)
+            {
+                await Task.Delay(300, ct).ConfigureAwait(false);
+                device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(ct);
+            }
+            if (device is null)
+                throw new InvalidOperationException("BluetoothLEDevice.FromBluetoothAddressAsync 返回 null（广播扫到了，系统仍不给设备对象）");
+        }
 
         WinRtMibleLink? link = null;
         device.ConnectionStatusChanged += (d, _) =>

@@ -15,7 +15,8 @@
 2. **不写系统目录、不弹 UAC**：程序只写当前用户（HKCU、%LOCALAPPDATA%、exe 同级目录）。
    安装程序默认装到 `%LOCALAPPDATA%\Programs\CuktechTray`。
 3. **配置向后兼容**：`Settings` 加字段要给默认值，`ConfigVersion` 负责迁移，别让老用户的 settings.json 失效。
-4. **不联网**：认证成功后的运行期只走蓝牙。任何网络请求只允许出现在首次扫码登录阶段。
+4. **网络只用在两处**：首次扫码登录（小米云，换设备时才走）和右键菜单「检查更新」（GitHub Releases，点了才走）。
+   认证成功后的运行期只走蓝牙，读数和控制一律不联网。
 5. **凭据不进仓库**：`settings.json`、`session.json`、`logs/` 都在 .gitignore 里；
    文档里写示例一律用占位值（`AA:BB:CC:DD:EE:FF`、`00112233445566778899aabb`）。
 6. **不改系统外观**：深色菜单、深色面板都是本程序自绘的，不要去改系统主题或注册表外观项。

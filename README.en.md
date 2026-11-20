@@ -45,11 +45,12 @@ click it and you get voltage / current / power for all four ports on one screen,
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Single file** | The portable version is a 69 MB self-contained exe: copy it to any writable folder and double-click. The installer adds a wizard, shortcuts and a clean uninstaller |
+| 🔄 **Checks for updates** | One click in the tray menu asks GitHub whether a newer version exists, and offers to open the download page. Only that click touches the network; nothing else does |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.0.exe`, 127 MB)
-> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.0.exe`, 69 MB, no installation)
+> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.1.exe`, 127 MB)
+> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.1.exe`, 69 MB, no installation)
 >
 > This repo holds source only; neither exe is checked in (together they are nearly 200 MB), so please download them from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > Neither exe is **code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
@@ -150,7 +151,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
 * The full context menu: Show power panel / Show control page / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
-  Icon style / Reconnect / Reconfigure device / Start with Windows / Open log / Settings file / Exit
+  Icon style / Reconnect / Reconfigure device / Check for updates / Start with Windows / Open log / Settings file / Exit
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
 > or turn it on in Settings → Personalization → Taskbar → Other system tray icons.
@@ -169,6 +170,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 | `--setup` | Force the first-run wizard open (for switching accounts or devices) |
 | `--selftest` | Run the "connect → authenticate → read four ports" regression once, write the result to the log, exit code 0/1 |
 | `--dump-icons` | Export a sample sheet of the five icon styles as `icons.png` |
+| `--check-update` | Ask GitHub once for the latest release and print current version / latest version / whether it went through a proxy or straight out |
 
 ---
 

@@ -8,6 +8,22 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // 命令行里单独问一次 GitHub（我在打包时用来验证，平时用托盘菜单里那一项）
+        if (args.Any(a => a.Equals("--check-update", StringComparison.OrdinalIgnoreCase)))
+        {
+            var r = UpdateCheck.RunAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"current={UpdateCheck.Current}");
+            if (!r.Ok)
+            {
+                Console.WriteLine("error=" + r.Error);
+                Environment.ExitCode = 1;
+                return;
+            }
+            Console.WriteLine($"latest={r.Latest} url={r.ReleaseUrl} via={r.Via}");
+            Console.WriteLine(r.Latest is not null && r.Latest > UpdateCheck.Current ? "NEWER" : "up-to-date");
+            return;
+        }
+
         using var mutex = new Mutex(initiallyOwned: true, MutexName, out bool isNew);
         if (!isNew)
         {
