@@ -20,6 +20,9 @@
 5. **凭据不进仓库**：`settings.json`、`session.json`、`logs/` 都在 .gitignore 里；
    文档里写示例一律用占位值（`AA:BB:CC:DD:EE:FF`、`00112233445566778899aabb`）。
 6. **不改系统外观**：深色菜单、深色面板都是本程序自绘的，不要去改系统主题或注册表外观项。
+7. **先方案、后动手；推送前必须问**：加功能或改行为之前，先说清楚要做什么、怎么做、影响哪些文件，等用户点头再写代码。
+   打安装包、推 GitHub、发 Release、往用户机器目录（`D:\KTK`）部署，每一步都要先问一句「要发吗」，得到明确同意才执行。
+   未经同意只允许在本机做只读检查、编译和自测。
 
 ## 构建
 
@@ -54,6 +57,8 @@
 | 托盘图标长什么样 | `src/CuktechTray/WattIcon.cs`、`WattStyle.cs` |
 | 功率面板排版 | `src/CuktechTray/PanelForm.cs`、`UiTheme.cs` |
 | 面板的控制页签（四路开关） | `src/CuktechTray/PanelForm.cs`（0.3.0 起与读数页同一个窗口，`Tab.Control`） |
+| 面板的模式页签（充电模式四档） | `src/CuktechTray/PanelForm.cs`（`Tab.Mode`）、`DeviceClient.SceneModes` / `SetSceneModeAsync` |
+| 右键菜单皮肤（圆角 / 亚克力） | `src/CuktechTray/MenuEffect.cs`（`Apply` / `IsBlurred`）；间距与绿勾在 `UiTheme.cs` 的 `Spacing` / `DrawCheck` |
 | 任务栏那一小块 | `src/CuktechTray/TaskbarWidget.cs`（挂载、拖拽、alpha 绘制都在里面） |
 | 协议 / 认证 | `src/CuktechMible/` |
 | 扫码登录 | `src/CuktechLogin/` |

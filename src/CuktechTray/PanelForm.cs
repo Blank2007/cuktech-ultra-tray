@@ -49,8 +49,8 @@ internal sealed class PanelForm : Form
     private const string PinGlyph = "\uE718";
     private const string UnpinGlyph = "\uE77A";
 
-    /// <summary>哪一页：读数 or 控制。切页不改变窗口尺寸，只在同一块画布上换内容。</summary>
-    public enum Tab { Read, Control }
+    /// <summary>哪一页：读数 / 控制 / 模式。切页不改变窗口尺寸，只在同一块画布上换内容。</summary>
+    public enum Tab { Read, Control, Mode }
 
     private readonly DeviceClient _client;
     private Tab _tab = Tab.Read;
@@ -73,6 +73,8 @@ internal sealed class PanelForm : Form
     /// <summary>当前鼠标悬停的位置：图钉 / 页签 / 某一路的开关。</summary>
     private int _hoverTab = -1;
     private int _hoverSwitch = -1;
+    /// <summary>模式页悬停的卡片序号。</summary>
+    private int _hoverMode = -1;
 
     /// <summary>守住「不许自己压在最上面」这条规矩的定时器，见 GuardTick。</summary>
     private readonly System.Windows.Forms.Timer _guard;
@@ -120,9 +122,9 @@ internal sealed class PanelForm : Form
             HideNow("menu-close");
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }) { Font = new Font("Microsoft YaHei UI", 9.5f) };
-        _menu = new ContextMenuStrip { ShowImageMargin = false };
-        UiTheme.Skin(_menu);
+        _menu = new ContextMenuStrip();
         _menu.Items.AddRange(new ToolStripItem[] { _menuPin, new ToolStripSeparator(), menuClose });
+        UiTheme.Skin(_menu);
         _menu.Opening += (_, _) => _menuPin.Checked = Pinned;
         ContextMenuStrip = _menu;
 
@@ -156,13 +158,19 @@ internal sealed class PanelForm : Form
     {
         if (_tab == tab) return;
         _tab = tab;
-        if (tab == Tab.Control)
+        if (tab == Tab.Control || tab == Tab.Mode)
         {
             _snap = _client.Last;
             _status = "";
             _statusKind = StatusKind.None;
         }
+        if (tab == Tab.Mode)
+        {
+            // 你可能在米家 App 里改过模式，这里主动读一次，别拿旧值糊弄人
+            _ = RefreshModeAsync();
+        }
         _hoverSwitch = -1;
+        _hoverMode = -1;
         Invalidate();
     }
 
@@ -245,10 +253,12 @@ internal sealed class PanelForm : Form
         // ---- 页签 ----
         DrawTab(g, TabReadRect, "读数", _tab == Tab.Read, _hoverTab == 0);
         DrawTab(g, TabControlRect, "控制", _tab == Tab.Control, _hoverTab == 1);
+        DrawTab(g, TabModeRect, "模式", _tab == Tab.Mode, _hoverTab == 2);
 
         // ---- 当前页内容 ----
         if (_tab == Tab.Read) PaintReadPage(g);
-        else PaintControlPage(g);
+        else if (_tab == Tab.Control) PaintControlPage(g);
+        else PaintModePage(g);
 
         // ---- 页脚：两页共用 ----
         var (footText, footColor) = FootStatus();
@@ -283,6 +293,63 @@ internal sealed class PanelForm : Form
 
         for (int i = 0; i < 4; i++)
             DrawPort(g, _snap.Ports[i], RowTop * s + i * RowStep * s, i);
+    }
+
+    /// <summary>模式页：四个充电模式各一张卡片，点哪张就切到哪个（SIID=2 PIID=5）。</summary>
+    private void PaintModePage(Graphics g)
+    {
+        float s = _s;
+        float pad = 16 * s;
+
+        Draw(g, "点一下就切，充电器立刻换策略，不用再保存", _fFoot, Dim, pad, 84 * s, 262 * s, 18 * s);
+
+        for (int i = 0; i < DeviceClient.SceneModes.Length; i++)
+            DrawModeCard(g, ModeCardRect(i), i);
+    }
+
+    private void DrawModeCard(Graphics g, Rectangle r, int index)
+    {
+        float s = _s;
+        var (value, name, hint) = DeviceClient.SceneModes[index];
+        bool active = _snap.SceneMode == value;
+        bool hover = _hoverMode == index;
+        bool canWrite = _client.IsReady && _snap.Connected && !_busy;
+
+        int alpha = active ? 28 : hover ? 16 : 9;
+        using (var path = RoundRect(r, (int)(10 * s)))
+        {
+            using (var b = new SolidBrush(Color.FromArgb(alpha, 255, 255, 255))) g.FillPath(b, path);
+            var edge = active
+                ? Color.FromArgb(canWrite ? 96 : 44, Ok)
+                : Color.FromArgb(hover ? 44 : 16, 255, 255, 255);
+            using (var pen = new Pen(edge, 1f)) g.DrawPath(pen, path);
+        }
+
+        // 选中那档左边亮一条绿边，扫一眼就知道现在在哪
+        if (active)
+        {
+            var bar = new Rectangle(r.X + (int)(1 * s), r.Y + (int)(10 * s), (int)(3 * s), r.Height - (int)(20 * s));
+            using var barPath = RoundRect(bar, (int)(1.5f * s));
+            using var barBrush = new SolidBrush(canWrite ? Ok : Color.FromArgb(110, Ok));
+            g.FillPath(barBrush, barPath);
+        }
+
+        var nameColor = active ? Fg : canWrite ? Color.FromArgb(198, 205, 213) : Color.FromArgb(126, 133, 142);
+        Draw(g, name, _fName, nameColor, r.X + 14 * s, r.Y + 3 * s, r.Width - 84 * s, 20 * s);
+        var hintColor = active ? Color.FromArgb(158, 166, 176) : Color.FromArgb(116, 124, 134);
+        Draw(g, hint, _fFoot, hintColor, r.X + 14 * s, r.Y + 22 * s, r.Width - 84 * s, 16 * s);
+
+        if (active)
+        {
+            string tag = "当前";
+            int tw = (int)(Measure(g, tag, _fFoot) + 16 * s);
+            var tr = new Rectangle(r.Right - tw - (int)(12 * s), r.Y + (r.Height - (int)(20 * s)) / 2, tw, (int)(20 * s));
+            using (var tp = RoundRect(tr, (int)(10 * s)))
+            using (var tb = new SolidBrush(Color.FromArgb(canWrite ? 36 : 20, Ok)))
+                g.FillPath(tb, tp);
+            Draw(g, tag, _fFoot, canWrite ? Ok : Color.FromArgb(130, Ok), tr.X, tr.Y, tr.Width, tr.Height,
+                TextFormatFlags.HorizontalCenter);
+        }
     }
 
     /// <summary>控制页：每行左边读数、右边开关。行高和读数页一模一样，切页时眼睛不用重新找位置。</summary>
@@ -522,6 +589,30 @@ internal sealed class PanelForm : Form
         }
     }
 
+    private Rectangle TabModeRect
+    {
+        get
+        {
+            var r = TabControlRect;
+            return new Rectangle(r.Right + (int)(TabGap * _s), r.Y, r.Width, r.Height);
+        }
+    }
+
+    // 模式页四个卡片的矩形（44 高、52 一行，最后一张底边 306，页脚在 328）
+    private Rectangle ModeCardRect(int i) => new(
+        (int)(14 * _s),
+        (int)((106 + i * 52) * _s),
+        Width - (int)(28 * _s),
+        (int)(44 * _s));
+
+    private int ModeHit(Point p)
+    {
+        if (_tab != Tab.Mode) return -1;
+        for (int i = 0; i < DeviceClient.SceneModes.Length; i++)
+            if (ModeCardRect(i).Contains(p)) return i;
+        return -1;
+    }
+
     // 竖直方向跟左边那行字对齐：行文字占 22*s 且垂直居中，所以开关中心也落在 top + 11*s
     private Rectangle SwitchRect(int i) => new(
         Width - (int)(16 * _s) - (int)(48 * _s),
@@ -547,6 +638,69 @@ internal sealed class PanelForm : Form
     }
 
     // ==================== 与设备交互 ====================
+
+    private static string ModeName(int value)
+    {
+        foreach (var m in DeviceClient.SceneModes)
+            if (m.Value == value) return m.Name;
+        return "未知(" + value + ")";
+    }
+
+    /// <summary>打开模式页时读一次真实值（米家 App 可能改过）。</summary>
+    private async Task RefreshModeAsync()
+    {
+        if (!_client.IsReady) return;
+        try
+        {
+            var res = await _client.RefreshSceneModeAsync();
+            if (!res.Ok) SetStatus("读当前模式失败：" + res.Error, StatusKind.Bad);
+        }
+        catch { }
+        finally
+        {
+            _snap = _client.Last;
+            Invalidate();
+        }
+    }
+
+    /// <summary>点某张模式卡片。命令走异步，写完设备会回读确认，结果写进页脚。</summary>
+    private async Task SetModeAsync(int mode)
+    {
+        if (_busy) return;
+
+        if (_snap.SceneMode == mode)
+        {
+            SetStatus("已经是「" + ModeName(mode) + "」了", StatusKind.Ok);
+            return;
+        }
+
+        if (!_client.IsReady || !_snap.Connected)
+        {
+            SetStatus("还没连上充电器，无法切换充电模式", StatusKind.Bad);
+            return;
+        }
+
+        _busy = true;
+        SetStatus($"正在切到「{ModeName(mode)}」…", StatusKind.Busy);
+        try
+        {
+            var res = await _client.SetSceneModeAsync(mode);
+            if (res.Ok)
+                SetStatus($"已切到「{ModeName(mode)}」（设备回读 {_client.SceneMode}）", StatusKind.Ok);
+            else
+                SetStatus($"切到「{ModeName(mode)}」失败：{res.Error}", StatusKind.Bad);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("切换失败：" + ex.Message, StatusKind.Bad);
+        }
+        finally
+        {
+            _busy = false;
+            _snap = _client.Last;
+            Invalidate();
+        }
+    }
 
     /// <summary>点某一路的开关。命令走异步，界面上先显示「正在打开…」，回读结果写进页脚。</summary>
     private async Task TogglePortAsync(int index)
@@ -694,6 +848,14 @@ internal sealed class PanelForm : Form
 
         if (TabReadRect.Contains(e.Location)) { SetTab(Tab.Read); return; }
         if (TabControlRect.Contains(e.Location)) { SetTab(Tab.Control); return; }
+        if (TabModeRect.Contains(e.Location)) { SetTab(Tab.Mode); return; }
+
+        int mode = ModeHit(e.Location);
+        if (mode >= 0)
+        {
+            _ = SetModeAsync(DeviceClient.SceneModes[mode].Value);
+            return;
+        }
 
         int sw = SwitchHit(e.Location);
         if (sw >= 0)
@@ -719,16 +881,20 @@ internal sealed class PanelForm : Form
             else _tip?.Hide(this);
         }
 
-        int tabHover = TabReadRect.Contains(e.Location) ? 0 : TabControlRect.Contains(e.Location) ? 1 : -1;
+        int tabHover = TabReadRect.Contains(e.Location) ? 0
+                     : TabControlRect.Contains(e.Location) ? 1
+                     : TabModeRect.Contains(e.Location) ? 2 : -1;
         int swHover = SwitchHit(e.Location);
-        if (tabHover != _hoverTab || swHover != _hoverSwitch)
+        int modeHover = ModeHit(e.Location);
+        if (tabHover != _hoverTab || swHover != _hoverSwitch || modeHover != _hoverMode)
         {
             _hoverTab = tabHover;
             _hoverSwitch = swHover;
+            _hoverMode = modeHover;
             Invalidate();
         }
 
-        bool hand = pinHover || tabHover >= 0 || swHover >= 0;
+        bool hand = pinHover || tabHover >= 0 || swHover >= 0 || modeHover >= 0;
         Cursor = hand ? Cursors.Hand : Cursors.Default;
 
         if (_dragging)
@@ -738,9 +904,10 @@ internal sealed class PanelForm : Form
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        if (_hoverTab == -1 && _hoverSwitch == -1) return;
+        if (_hoverTab == -1 && _hoverSwitch == -1 && _hoverMode == -1) return;
         _hoverTab = -1;
         _hoverSwitch = -1;
+        _hoverMode = -1;
         Invalidate();
     }
 
@@ -762,7 +929,7 @@ internal sealed class PanelForm : Form
         if (keyData == Keys.Escape) { HideNow("esc"); return true; }
         if (keyData == Keys.Tab)
         {
-            SetTab(_tab == Tab.Read ? Tab.Control : Tab.Read);
+            SetTab(_tab switch { Tab.Read => Tab.Control, Tab.Control => Tab.Mode, _ => Tab.Read });
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);

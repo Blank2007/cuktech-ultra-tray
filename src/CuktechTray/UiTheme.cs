@@ -20,13 +20,41 @@ internal static class UiTheme
 
     private static readonly ToolStripRenderer Shared = new DarkMenuRenderer();
 
-    /// <summary>给一个右键菜单套上深色皮肤（字体也顺手统一成微软雅黑 UI）。</summary>
+    /// <summary>给一个右键菜单套上深色 + Win11 圆角毛玻璃皮肤（字体统一成微软雅黑 UI）。</summary>
     internal static void Skin(ContextMenuStrip menu)
     {
         menu.Renderer = Shared;
         menu.BackColor = MenuBg;
         menu.ForeColor = MenuFg;
-        menu.Font = new Font("Microsoft YaHei UI", 9.5f);
+        menu.Font = new Font("Microsoft YaHei UI", 10f);
+        menu.ShowImageMargin = false;
+        // 勾号画在左侧那一列里，之前 ShowImageMargin=false 把这一列也裁掉了，于是「开没开」看不出来
+        menu.ShowCheckMargin = true;
+        menu.DropShadowEnabled = true;
+        Spacing(menu);
+        MenuEffect.Apply(menu);
+    }
+
+    /// <summary>Win11 的菜单条目比默认松：每项上下各 5 px，分隔线上下各 3 px。</summary>
+    internal static void Spacing(ToolStrip menu)
+    {
+        foreach (ToolStripItem item in menu.Items)
+        {
+            // 左边留 24 px 给勾（见 DarkMenuRenderer.OnRenderMenuItemBackground，勾是自己画的）
+            item.Padding = item is ToolStripSeparator
+                ? new Padding(0, 3, 0, 3)
+                : new Padding(24, 5, 10, 5);
+
+            switch (item)
+            {
+                case ToolStripMenuItem mi when mi.HasDropDownItems:
+                    Spacing(mi.DropDown);
+                    break;
+                case ToolStripSplitButton sb:
+                    Spacing(sb.DropDown);
+                    break;
+            }
+        }
     }
 }
 
@@ -39,30 +67,84 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
 
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
     {
-        using var b = new SolidBrush(UiTheme.MenuBg);
-        e.Graphics.FillRectangle(b, new Rectangle(Point.Empty, e.ToolStrip.Size));
+        // 已经是毛玻璃的窗口不能再铺不透明底，否则亚克力被整块盖掉、白忙一场
+        if (!MenuEffect.IsBlurred(e.ToolStrip.Handle))
+        {
+            using var b = new SolidBrush(UiTheme.MenuBg);
+            e.Graphics.FillRectangle(b, new Rectangle(Point.Empty, e.ToolStrip.Size));
+        }
+
+        // 勾在最底层先画一遍：菜单项背景平时是透明的，不会把它盖住
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        foreach (ToolStripItem item in e.ToolStrip.Items) DrawCheck(e.Graphics, item);
     }
 
     protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
     {
+        if (MenuEffect.IsBlurred(e.ToolStrip.Handle)) return;
         using var b = new SolidBrush(UiTheme.MenuBg);
         e.Graphics.FillRectangle(b, new Rectangle(Point.Empty, e.ToolStrip.Size));
     }
 
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
     {
+        int w = e.ToolStrip.Width, h = e.ToolStrip.Height;
+        if (w < 2 || h < 2) return;
+
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var pen = new Pen(UiTheme.MenuLine);
-        e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+
+        // 毛玻璃窗口自带 8 px 圆角，边框照着圆角描，不然四个角会露出直角
+        if (MenuEffect.IsBlurred(e.ToolStrip.Handle))
+        {
+            using var path = Round(new Rectangle(0, 0, w - 1, h - 1), 8);
+            e.Graphics.DrawPath(pen, path);
+            return;
+        }
+
+        e.Graphics.DrawRectangle(pen, 0, 0, w - 1, h - 1);
     }
 
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
     {
-        if (!e.Item.Selected && !e.Item.Pressed) return;
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var r = new Rectangle(2, 1, Math.Max(1, e.Item.Width - 4), Math.Max(1, e.Item.Height - 2));
-        using var path = Round(r, 4);
-        using var b = new SolidBrush(UiTheme.MenuHover);
-        e.Graphics.FillPath(b, path);
+
+        if (e.Item.Selected || e.Item.Pressed)
+        {
+            var r = new Rectangle(2, 1, Math.Max(1, e.Item.Width - 4), Math.Max(1, e.Item.Height - 2));
+            using var path = Round(r, 6);
+            using var b = new SolidBrush(UiTheme.MenuHover);
+            e.Graphics.FillPath(b, path);
+        }
+
+        // hover 那层圆角底会盖住底层画的勾，所以这里补一次
+        DrawCheck(e.Graphics, e.Item);
+    }
+
+    /// <summary>自己画勾：ToolStrip 自带的 check margin 在 ShowImageMargin=false 时不肯让位，干脆不指望它。</summary>
+    private static void DrawCheck(Graphics g, ToolStripItem item)
+    {
+        if (item is not ToolStripMenuItem mi) return;
+        if (!mi.Checked && mi.CheckState != CheckState.Indeterminate) return;
+
+        var ib = item.Bounds;
+        if (ib.Width <= 0 || ib.Height <= 0) return;
+
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        float cx = ib.Left + 13;
+        float cy = ib.Top + ib.Height / 2f;
+        using var pen = new Pen(item.Enabled ? UiTheme.MenuGreen : UiTheme.MenuFgDim, Math.Max(1.5f, g.DpiX / 96f * 1.5f))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        g.DrawLines(pen, new[]
+        {
+            new PointF(cx - 4.5f, cy),
+            new PointF(cx - 1.2f, cy + 3.6f),
+            new PointF(cx + 5.2f, cy - 4.4f),
+        });
     }
 
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)

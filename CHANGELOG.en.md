@@ -4,6 +4,45 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.3.3 — 2026-11-22
+
+The context menu got a new look, and "is this switch on or not" turned into something you can just see.
+
+### Tray menu
+
+- **Rounded corners + acrylic translucency**: the context menu was repainted with DWM's rounded-corner attribute plus the acrylic variant of `SetWindowCompositionAttribute`,
+  the base colour was set to the menu's own dark gray (30,34,41) at F2 alpha, and the item spacing was switched to Win11's proportions (5 px top and bottom, 24 px on the left reserved for the check).
+  It comes close to the semi-transparent menu in TranslucentTB; Win11 24H2 only gives popup windows a translucent tint rather than real blur, so it is "see-through", not "frosted glass".
+- **A green check on the left of items that are on**: toggle items such as `Pin panel to desktop` / `Show power on taskbar` / `Start with Windows` get a green check while they are on and stay blank while they are off,
+  so you no longer have to click in to find out the current state. The check is drawn by the program itself (with `ShowImageMargin = false`, ToolStrip's built-in check margin no longer takes effect),
+  painted on the menu background layer and repainted once more when the mouse passes over.
+- The submenus (Charge mode / Icon style) get the same skin too, check marks and rounded corners included.
+
+### Implementation
+
+- New `MenuEffect.cs`: `Apply(ToolStripDropDown)` puts the rounded corners and the acrylic on the menu window and registers it in the `IsBlurred` set; the renderer uses that to decide
+  "it is translucent already, don't lay an opaque background underneath"
+- `Skin()` in `UiTheme.cs` now does four things: set the renderer, set the font, assign Padding by item type, and attach the effect to the menu
+- `UiTheme.Skin()` must be called after every menu item has been added — it walks the items to set the spacing, and calling it too early just gets an empty list
+
+## 0.3.2 — 2026-11-22
+
+The "charge mode" from the Mi Home app is now built in, in the panel and in the tray menu.
+
+### Added
+
+- **Charge mode (scene mode)**: the panel gained a third tab, "Mode", with four profiles — AI / Digital ecosystem / Single port / Balanced
+  (protocol SIID 2 / PIID 5, values 1–4). Clicking a card applies it immediately; after the write one GET reads the value back and verifies it, and the bottom line reports
+  "switched to X (device reads N)"; if the device and the request disagree it raises an error instead of pretending it worked.
+  All four round-tripped on real hardware (it was sitting on Single port 3 → writing 1 / 3 / 4 / 2 each read back the same value), and 3 was written back afterwards.
+- Switching to the "Mode" tab reads the real value from the device first, no cached value pretending.
+- The tray right-click menu gained a "Charge mode" submenu, four check-marked items that follow the current profile; the whole entry is greyed out when the charger is not connected.
+
+### Fixed
+
+- The GET reply for scene mode is a single byte (`op=0x03 type=16 raw=03`), and going through `MiotMessage.UIntValue` reads it as 0;
+  you must read `ValueBytes[0]`. Copying how the four-port switches were written silently reads "don't know" — I walked into this once.
+
 ## 0.3.1 — 2026-11-20
 
 Two things: the "it is charging, yet it never connects" trap is plugged, and update checking was added.

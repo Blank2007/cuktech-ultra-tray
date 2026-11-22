@@ -23,6 +23,8 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _pinItem;
     private readonly ToolStripMenuItem _taskbarItem;
     private readonly ToolStripMenuItem _updateItem;
+    private readonly ToolStripMenuItem _modeMenu;
+    private readonly ToolStripMenuItem[] _modeItems;
 
     private TaskbarWidget? _widget;
 
@@ -100,10 +102,24 @@ internal sealed class TrayApp : ApplicationContext
 
         _updateItem = new ToolStripMenuItem("检查更新…", null, (_, _) => CheckUpdates());
 
-        var menu = new ContextMenuStrip { ShowImageMargin = false };
-        UiTheme.Skin(menu);
+        // 充电模式（米家 App 里叫「充电模式」）：托盘上直接切，不用打开面板
+        _modeMenu = new ToolStripMenuItem("充电模式");
+        _modeItems = new ToolStripMenuItem[DeviceClient.SceneModes.Length];
+        for (int i = 0; i < DeviceClient.SceneModes.Length; i++)
+        {
+            var m = DeviceClient.SceneModes[i];
+            var item = new ToolStripMenuItem(m.Name, null, (_, _) => _ = SetSceneModeFromMenuAsync(m.Value))
+            {
+                ToolTipText = m.Hint,
+            };
+            _modeItems[i] = item;
+            _modeMenu.DropDownItems.Add(item);
+        }
+
+        var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("显示功率面板", null, (_, _) => ShowPanel(true)) { Font = new Font(menu.Font, FontStyle.Bold) });
         menu.Items.Add(new ToolStripMenuItem("显示控制页（四路开关）", null, (_, _) => ShowPanel(true, PanelForm.Tab.Control)));
+        menu.Items.Add(_modeMenu);
         menu.Items.Add(_pinItem);
         menu.Items.Add(_taskbarItem);
         var posItem = new ToolStripMenuItem("重置任务栏数字位置", null, (_, _) => ResetTaskbarPosition());
@@ -119,12 +135,28 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("设置文件", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("退出", null, (_, _) => ExitApp()));
+        // 皮肤（含条目间距、勾位留白、亚克力）要等所有条目都到位之后再套
+        UiTheme.Skin(menu);
         _tray.ContextMenuStrip = menu;
+
+        // --menu-demo：启动 1.2 秒后在屏幕中间把菜单摊开，方便截图看外观（不影响正常使用）
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "--menu-demo") >= 0)
+        {
+            var demo = new System.Windows.Forms.Timer { Interval = 1200 };
+            demo.Tick += (_, _) =>
+            {
+                demo.Stop();
+                demo.Dispose();
+                menu.Show(new Point(520, 260));
+            };
+            demo.Start();
+        }
 
         // 每次弹菜单都看一眼当前是"自动"还是"用户拖过"
         menu.Opening += (_, _) =>
         {
             posItem.Enabled = settings.TaskbarWidget;
+            UpdateModeChecks(_snap.SceneMode);
             posItem.Text = settings.TaskbarLeftDip >= 0
                 ? "重置任务栏数字位置（现在是拖动后的位置）"
                 : "重置任务栏数字位置（现在是自动）";
@@ -345,6 +377,38 @@ internal sealed class TrayApp : ApplicationContext
         _statusItem.Text = snap.Connected
             ? $"已连接 · 总 {snap.TotalWatts:F1} W"
             : $"未连接 · {snap.Error ?? snap.Status}";
+        UpdateModeChecks(snap.SceneMode);
+    }
+
+    /// <summary>顶部菜单里的四项打个勾，标出设备现在用的是哪一档；没连上时整组灰掉。</summary>
+    private void UpdateModeChecks(int sceneMode)
+    {
+        if (_modeItems is null) return;
+        for (int i = 0; i < _modeItems.Length; i++)
+            _modeItems[i].Checked = DeviceClient.SceneModes[i].Value == sceneMode;
+        if (_modeMenu is not null) _modeMenu.Enabled = sceneMode > 0 && _client.IsReady;
+    }
+
+    /// <summary>从托盘菜单里切充电模式。结果直接显示在菜单顶部那一行，失败再补一个气泡。</summary>
+    private async Task SetSceneModeFromMenuAsync(int mode)
+    {
+        string name = "模式 " + mode;
+        foreach (var m in DeviceClient.SceneModes)
+            if (m.Value == mode) name = m.Name;
+
+        var res = await _client.SetSceneModeAsync(mode);
+        if (res.Ok)
+        {
+            _statusItem.Text = $"充电模式已切到「{name}」（设备回读 {_client.SceneMode}）";
+        }
+        else
+        {
+            _statusItem.Text = $"切到「{name}」失败：{res.Error}";
+            _tray.BalloonTipTitle = "充电模式没切成";
+            _tray.BalloonTipText = res.Error;
+            _tray.ShowBalloonTip(4000);
+        }
+        UpdateModeChecks(_client.SceneMode);
     }
 
     private void UpdateIcon(Snapshot snap)

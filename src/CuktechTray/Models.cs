@@ -32,6 +32,9 @@ internal sealed class Snapshot
     public string Firmware { get; set; } = "";
     public int PortSwitch { get; set; } = 0x0F;
 
+    /// <summary>充电模式（SIID=2 PIID=5）：1=AI 2=数码生态 3=单口 4=均衡。-1 = 还不知道（没连上或没读到）。</summary>
+    public int SceneMode { get; set; } = -1;
+
     public double TotalWatts => Ports.Sum(p => p.Working ? p.Watts : 0);
 
     public Snapshot Clone()
@@ -39,7 +42,7 @@ internal sealed class Snapshot
         var c = new Snapshot
         {
             At = At, Connected = Connected, Status = Status, Error = Error,
-            Firmware = Firmware, PortSwitch = PortSwitch,
+            Firmware = Firmware, PortSwitch = PortSwitch, SceneMode = SceneMode,
         };
         for (int i = 0; i < Ports.Length; i++)
         {

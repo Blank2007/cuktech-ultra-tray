@@ -43,14 +43,16 @@ click it and you get voltage / current / power for all four ports on one screen,
 | 🔵 **Bluetooth direct** | Full Xiaomi MIoT BLE authentication implemented from scratch (HKDF + HMAC + AES-CCM), measured at 3.7–4.6 s to authenticate; no Mi Home app in the loop, no gateway |
 | 📊 **Taskbar too** | A small strip at the far left of the taskbar, right next to the Start button, shows total power live — digits only, no icon and no background plate, and you can drag it somewhere else |
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
+| ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Single file** | The portable version is a 69 MB self-contained exe: copy it to any writable folder and double-click. The installer adds a wizard, shortcuts and a clean uninstaller |
 | 🔄 **Checks for updates** | One click in the tray menu asks GitHub whether a newer version exists, and offers to open the download page. Only that click touches the network; nothing else does |
+| 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.1.exe`, 127 MB)
-> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.1.exe`, 69 MB, no installation)
+> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.2.exe`, 127 MB)
+> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.2.exe`, 69 MB, no installation)
 >
 > This repo holds source only; neither exe is checked in (together they are nearly 200 MB), so please download them from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > Neither exe is **code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
@@ -139,6 +141,36 @@ The panel's second tab (right-click the tray icon → "Show control page", or ad
 * One switch per port, so you can cut or restore power directly (C1 / C2 / C3 / A are controlled independently, and every write is read back and verified; failures explain themselves at the bottom)
 * When the charger is not connected the switches are **dimmed into gray sliders** — they don't respond, and they shouldn't: if we can't read the device state we don't write anything into the device
 
+### Charge mode
+
+![Mode tab: four charge profiles, current one marked](docs/shot-mode.png)
+
+The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene mode in the protocol, SIID 2 / PIID 5). Four profiles:
+
+| Profile | Value | Meaning |
+|---|---|---|
+| AI | 1 | gives whatever the device asks for, allocates power automatically |
+| Digital ecosystem | 2 | favours Mi devices, factory default |
+| Single port | 3 | one port fast-charges, the others give way |
+| Balanced | 4 | splits evenly, nobody left out |
+
+* Click a card to apply it, there is no save button; afterwards it reads the device back once to confirm it really changed, and the footer says "switched to X (device reads N)"
+* The card for the current profile gets a green border, a green bar on its left and a small "current" tag; when the charger is not connected the whole page dims
+* The tab reads the real value from the device every time you open it — no cached value pretending
+* The tray right-click menu has a matching "Charge mode" submenu, with the check mark following the current profile
+
+### Tray menu
+
+![Context menu: rounded and semi-transparent, green checks on the items that are on](docs/shot-menu.png)
+
+Right-clicking the tray icon gets you exactly this menu; a left-click just shows or hides the panel.
+
+* **It looks like Win11**: rounded corners, a rounded border, a semi-transparent background (acrylic blur), and the side padding and item spacing are matched to Win11's menu proportions
+* **On or off, visible at a glance**: whenever an item is an on / off toggle, an item that is on gets a green check on the left and an item that is off stays blank
+  — the old "Start with Windows" tick used to take a click to find out; now you just look
+* The "Connected · 36.8 W total" line is live numbers, and it reads "Not connected" when the charger is not attached
+* Theme changes don't matter: the background follows the system's light / dark setting, and the menu itself is drawn by the program
+
 ### Tray icon
 
 Five looks are available (context menu → Icon style); the default is "dark square with a colored bar at the bottom", and there are also large color block / solid color / bare digits with no background / lightning bolt:
@@ -150,8 +182,9 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 * The program has no main window; it just lives in the tray. On startup it pops the panel once in the bottom right corner (numbers start flowing after about 4 s of authentication) and tucks it away if nobody touches it for 12 s
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
-* The full context menu: Show power panel / Show control page / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
+* The full context menu: Show power panel / Show control page / Charge mode / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
   Icon style / Reconnect / Reconfigure device / Check for updates / Start with Windows / Open log / Settings file / Exit
+* In that menu, "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
 > or turn it on in Settings → Personalization → Taskbar → Other system tray icons.

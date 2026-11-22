@@ -48,6 +48,11 @@ internal sealed class DeviceClient
     /// <summary>当前端口开关位掩码（bit0=C1 bit1=C2 bit2=C3 bit3=USB-A），1=该口通电。</summary>
     public int PortSwitch => Volatile.Read(ref _portSwitch);
 
+    private int _sceneMode = -1;
+
+    /// <summary>当前充电模式（1=AI 2=数码生态 3=单口 4=均衡），-1 = 还没读到。</summary>
+    public int SceneMode => Volatile.Read(ref _sceneMode);
+
     /// <summary>命令通道是否可用（已连接且认证完成）。</summary>
     public bool IsReady => _session is { Authenticated: true };
 
@@ -120,6 +125,72 @@ internal sealed class DeviceClient
         finally { _cmdLock.Release(); }
     }
 
+    /// <summary>充电模式的四个取值（顺序即下拉/卡片顺序）。</summary>
+    public static readonly (int Value, string Name, string Hint)[] SceneModes =
+    {
+        (1, "AI", "插上什么就按什么给，自动分配功率"),
+        (2, "数码生态", "优先照顾自家设备，出厂默认"),
+        (3, "单口", "只给一路快充，其余让路"),
+        (4, "均衡", "四路平分，谁都不落下"),
+    };
+
+    /// <summary>
+    /// 切换充电模式（SIID=2 PIID=5）。
+    /// 实测记录见 docs/control-protocol.md 3.1：SET 只回 ACK 不带新值，所以写完必须再 GET 回读确认。
+    /// </summary>
+    public async Task<ControlResult> SetSceneModeAsync(int mode, CancellationToken ct = default)
+    {
+        if (mode is < 1 or > 4) return ControlResult.Fail("充电模式只有 1~4（AI / 数码生态 / 单口 / 均衡）");
+        var session = _session;
+        if (session is null || !session.Authenticated) return ControlResult.Fail("还没连上充电器，请等面板显示「已连接」");
+
+        await _cmdLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var w = await session.SendCommandAsync(2, 5, (uint)mode, 6, ct).ConfigureAwait(false);
+            if (w is null) return ControlResult.Fail("写入充电模式没有收到确认（设备无响应）");
+
+            var back = await session.SendCommandAsync(2, 5, null, 4, ct).ConfigureAwait(false);
+            int now = back?.ValueBytes is { Length: > 0 } b ? b[0] : -1;
+            if (now < 0) return ControlResult.Fail("已写入，但回读失败，实际模式未知（请重新打开面板看看）");
+
+            ApplySceneMode(now);
+            if (now != mode) return ControlResult.Fail($"设备只接受了模式 {now}（请求 {mode}）");
+            return ControlResult.Success();
+        }
+        catch (OperationCanceledException) { return ControlResult.Fail("操作被取消"); }
+        catch (Exception ex) { return ControlResult.Fail("写入失败：" + Humanize(ex)); }
+        finally { _cmdLock.Release(); }
+    }
+
+    /// <summary>读一次当前充电模式并推给界面（打开「模式」页时调用，能看到米家 App 改过的值）。</summary>
+    public async Task<ControlResult> RefreshSceneModeAsync(CancellationToken ct = default)
+    {
+        var session = _session;
+        if (session is null || !session.Authenticated) return ControlResult.Fail("还没连上充电器");
+
+        await _cmdLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var m = await session.SendCommandAsync(2, 5, null, 4, ct).ConfigureAwait(false);
+            if (m?.ValueBytes is not { Length: > 0 } vb) return ControlResult.Fail("读取充电模式失败（设备无响应）");
+            ApplySceneMode(vb[0]);
+            return ControlResult.Success();
+        }
+        catch (OperationCanceledException) { return ControlResult.Fail("操作被取消"); }
+        catch (Exception ex) { return ControlResult.Fail(Humanize(ex)); }
+        finally { _cmdLock.Release(); }
+    }
+
+    /// <summary>把新的充电模式写进最近一帧并推给界面。</summary>
+    private void ApplySceneMode(int mode)
+    {
+        Volatile.Write(ref _sceneMode, mode);
+        var snap = Last.Clone();
+        snap.SceneMode = mode;
+        Publish(snap);
+    }
+
     /// <summary>立刻读一次端口开关 + 四口数据并推一帧给界面（控制页「刷新」按钮用）。</summary>
     public async Task<ControlResult> RefreshAsync(CancellationToken ct = default)
     {
@@ -139,6 +210,13 @@ internal sealed class DeviceClient
             if (sw?.UIntValue is uint m16) mask = (int)m16;
             Volatile.Write(ref _portSwitch, mask);
             snap.PortSwitch = mask;
+
+            var sm = await session.SendCommandAsync(2, 5, null, 4, ct).ConfigureAwait(false);
+            if (sm?.ValueBytes is { Length: > 0 } vb)
+            {
+                Volatile.Write(ref _sceneMode, vb[0]);
+                snap.SceneMode = vb[0];
+            }
 
             int ok = 0;
             for (ushort piid = 1; piid <= 4; piid++)
@@ -276,6 +354,15 @@ internal sealed class DeviceClient
         }
         catch { }
 
+        Volatile.Write(ref _sceneMode, -1);
+        try
+        {
+            var sm = await session.SendCommandAsync(2, 5, null, 3, sessionCt).ConfigureAwait(false);
+            if (sm?.ValueBytes is { Length: > 0 } sb) Volatile.Write(ref _sceneMode, sb[0]);
+            Log($"[cfg] scene_mode={SceneMode}");
+        }
+        catch { }
+
         while (!sessionCt.IsCancellationRequested)
         {
             if (_linkLost.IsSet) throw new IOException("设备断开了连接");
@@ -287,6 +374,7 @@ internal sealed class DeviceClient
                 Status = "已连接",
                 Firmware = firmware,
                 PortSwitch = mask,
+                SceneMode = Volatile.Read(ref _sceneMode),
             };
             int ok = 0;
             // 读四口也进命令锁：控制页可能同时在下发写入，同一个会话里命令不能交错
