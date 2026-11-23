@@ -49,29 +49,17 @@ digits are rendered with the runtime font and colour rules and composited over a
 
 | File | Size | Notes |
 | --- | --- | --- |
-| `CuktechTray-0.4.5-win-x64.zip` | **5,038,055 bytes (4.80 MiB)** | `CuktechTray.exe` + `README.md` + `README.en.md` + `LICENSE` + `CHANGELOG.md`, all at the zip root, no wrapper folder |
-| `CuktechTray.exe` | **10,879,488 bytes (10.38 MiB)** | Portable build, also the installer; 4,608 bytes more than 0.4.4 purely from the self-check switches |
-| `CuktechTray-0.4.5.exe` | **10,879,488 bytes (same bytes)** | Identical file under the name the updater recognises — use this one for release assets |
+| `CuktechTray-0.4.5.exe` | **10,879,488 bytes (10.38 MiB)** | Portable build and installer in one file — the only asset in the release; 4,608 bytes more than 0.4.4 purely from the self-check switches |
 
 ## Checksums
 
 ```
-file   CuktechTray.exe
+file   CuktechTray-0.4.5.exe    (the local copy is called CuktechTray.exe; same bytes, same hash)
 size   10,879,488 bytes
 SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
-
-file   CuktechTray-0.4.5.exe         (same file, renamed)
-size   10,879,488 bytes
-SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
-
-file   CuktechTray-0.4.5-win-x64.zip
-size   5,038,055 bytes
-SHA256 FEF376E511E667D14CBC0ED766428AFFF5DBA7E3D638E9A358A3DCD3A32688B4
 ```
 
-`SHA256SUMS.txt` in the same folder holds exactly these three lines (uppercase SHA256, two spaces, filename, LF),
-so `sha256sum -c SHA256SUMS.txt` works under git-bash/WSL, and on plain Windows use
-`Get-FileHash .\CuktechTray-0.4.5-win-x64.zip -Algorithm SHA256`.
+On plain Windows use `Get-FileHash .\CuktechTray.exe -Algorithm SHA256`; GitHub also shows the digest on the asset page.
 
 ## Requirements
 

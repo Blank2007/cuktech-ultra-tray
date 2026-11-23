@@ -43,29 +43,17 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `CuktechTray-0.4.5-win-x64.zip` | **5,038,055 字节（4.80 MiB）** | `CuktechTray.exe` + `README.md` + `README.en.md` + `LICENSE` + `CHANGELOG.md`，全部在 zip 根目录，没有外层文件夹 |
-| `CuktechTray.exe` | **10,879,488 字节（10.38 MiB）** | 绿色版，同时也是安装器；比 0.4.4 的 10,874,880 字节多 4,608 字节（只多了 `--render-icons` / `--render-taskbar` 这类自查开关） |
-| `CuktechTray-0.4.5.exe` | **10,879,488 字节（同字节）** | 跟上面那个是同一个文件，只是按「检查更新」认的名字放了一份，传 Release 资产时直接用这个 |
+| `CuktechTray-0.4.5.exe` | **10,879,488 字节（10.38 MiB）** | 绿色版 + 安装器二合一，Release 里就放这一个；比 0.4.4 的 10,874,880 字节多 4,608 字节（只多了 `--render-icons` / `--render-taskbar` 这类自查开关） |
 
 ## 校验
 
 ```
-文件   CuktechTray.exe
+文件   CuktechTray.exe          （本地叫这个名，Release 资产叫 CuktechTray-0.4.5.exe，同一个文件）
 大小   10,879,488 字节
 SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
-
-文件   CuktechTray-0.4.5.exe         （同一个文件，只改了名字）
-大小   10,879,488 字节
-SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
-
-文件   CuktechTray-0.4.5-win-x64.zip
-大小   5,038,055 字节
-SHA256 FEF376E511E667D14CBC0ED766428AFFF5DBA7E3D638E9A358A3DCD3A32688B4
 ```
 
-同目录的 `SHA256SUMS.txt` 就是这三条（大写 SHA256 + 两个空格 + 文件名，LF 换行），
-装了 git for windows 或 WSL 可以直接 `sha256sum -c SHA256SUMS.txt`；纯 Windows 用
-`Get-FileHash .\CuktechTray-0.4.5-win-x64.zip -Algorithm SHA256` 对着看。
+纯 Windows 用 `Get-FileHash .\CuktechTray.exe -Algorithm SHA256` 对着看；GitHub 的资产页也会直接显示 digest。
 
 ## 系统要求
 
