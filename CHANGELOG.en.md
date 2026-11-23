@@ -4,6 +4,19 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.4.5 — 2026-11-23
+
+The UI and the feature set are identical to 0.4.4. What changed here is the evidence: the promo assets stop reusing older captures, the tray icon is rendered by the program itself, and the menu is captured from the real thing.
+
+- New `--render-icons`: the drawing inside `WattIcon` was split out as `public static Bitmap CreateBitmap(int size, Color accent)`, so the shell can render both icons (green = connected, grey = disconnected) straight to a 608×256 transparent PNG at `docs/shot-tray-icons.png` instead of relying on a 125%-scaled screenshot
+- `--menu-demo` now writes "已连接 · 总 6.0 W" before showing the menu, so the captured header no longer says "not connected / connecting…"
+- README gained two images: `docs/shot-menu-aot.png` under "Tray menu" (real capture of the self-drawn menu) and `docs/shot-tray-icons.png` under "Tray icon" (both languages)
+- New `--render-taskbar`: the taskbar digits are rendered to a transparent PNG with the same font (Segoe UI Bold 11 pt × scale) and the same colour rules (`WattStyle.Total`) the runtime uses, then composited over a real taskbar capture.
+  The old README taskbar image was a 0.2.2 demo capture and even had the wrong colour — 6.0 W is light blue under the current buckets, the old picture drew it green
+- README "Power on the taskbar" got a new image and new wording: `docs/shot-taskbar.png` plus a colour-bucket table (grey / light blue / green / amber / red) explaining why the 6.0W in the picture is light blue (both languages)
+- The two stale promo assets (the 0.2/0.3 "five icon styles" matrix and the 0.3.3 WinForms menu capture) were replaced with the 0.4.4 originals (the video project is not part of this repo)
+- Version 0.4.4 → 0.4.5; **no functional or visual change** — upgrading from 0.4.4 looks exactly the same
+
 ## 0.4.4 — 2026-11-23
 
 The connected pill in the top bar drops its fill; the dot and the label stay. The top bar also gets room to breathe.

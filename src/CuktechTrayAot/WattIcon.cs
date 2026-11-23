@@ -26,16 +26,7 @@ internal static class WattIcon
     /// <summary>画一枚闪电徽标。accent 只用来区分「已连接 / 未连接」两种状态。</summary>
     public static Icon Create(Color accent)
     {
-        int size = IconSize;
-        using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.Clear(Color.Transparent);
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            FillRoundedBackground(g, size, accent);
-            DrawBolt(g, size);
-        }
-
+        using var bmp = CreateBitmap(IconSize, accent);
         var handle = bmp.GetHicon();
         try
         {
@@ -46,6 +37,21 @@ internal static class WattIcon
         {
             DestroyIcon(handle);
         }
+    }
+
+    /// <summary>
+    /// 按指定边长画一枚图标位图。托盘里用 GetSystemMetrics 得到的 16px，
+    /// 文档和视频要放大展示，所以把边长交出来（画法完全不变，只是尺寸不同）。
+    /// </summary>
+    public static Bitmap CreateBitmap(int size, Color accent)
+    {
+        var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.Transparent);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        FillRoundedBackground(g, size, accent);
+        DrawBolt(g, size);
+        return bmp;
     }
 
     private static Color Lighten(Color c, float amount) => Color.FromArgb(

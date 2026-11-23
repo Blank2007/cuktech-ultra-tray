@@ -391,6 +391,9 @@ internal sealed class TrayApp : WinBase
             await Task.Delay(1200);
             _ui.Post(_ =>
             {
+                // 截图/视频要的是「已连接 · 总 6.0 W」那一行，跟面板渲染图同一组数；
+                // 演示模式没有真设备，所以直接借 SetStatus 的临时状态行（10 分钟足够截图）。
+                SetStatus("已连接 · 总 6.0 W", 600);
                 MenuWindow.Show(BuildMenu(), 200, 200);
                 LogSink.Write("[menu] demo shown");
             }, null);

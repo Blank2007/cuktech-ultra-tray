@@ -131,6 +131,74 @@ internal static class Program
             return 0;
         }
 
+        // 图标自查：把「已连接（绿）/ 未连接（灰）」两枚托盘图标按指定边长放大排一张，
+        // 给文档和视频用。画的是 WattIcon 本身，只是边长从 16px 换成 256px。
+        if (Has(args, "--render-icons"))
+        {
+            const int box = 256;
+            const int gap = 96;
+            using var canvas = new System.Drawing.Bitmap(box * 2 + gap, box,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(canvas))
+            {
+                g.Clear(System.Drawing.Color.Transparent);
+                for (int i = 0; i < 2; i++)
+                {
+                    var accent = i == 0
+                        ? System.Drawing.Color.FromArgb(26, 138, 86)    // 已连接
+                        : System.Drawing.Color.FromArgb(94, 99, 106);  // 未连接
+                    using var one = WattIcon.CreateBitmap(box, accent);
+                    g.DrawImage(one, new System.Drawing.Rectangle(i * (box + gap), 0, box, box));
+                }
+            }
+            canvas.Save(@"D:\dsh projects\cuktech-ultra-tray\docs\shot-tray-icons.png",
+                System.Drawing.Imaging.ImageFormat.Png);
+            LogSink.Write("[probe] rendered icons");
+            return 0;
+        }
+
+        // 任务栏数字自查：低完整性环境里 SetParent 挂不上任务栏，抓不到真机图。
+        // 这里用真机同一套字体（Segoe UI Bold 11pt × 缩放）和配色（WattStyle.Total）
+        // 把那一小块（84 dip 宽 × 任务栏高）画成透明 PNG，给文档配图用。
+        if (Has(args, "--render-taskbar"))
+        {
+            float ts = 1.25f;
+            int th = 60;
+            foreach (var a in args)
+            {
+                if (a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)
+                    && float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float tsv)) ts = tsv;
+                if (a.StartsWith("--render-height=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(a.Substring("--render-height=".Length), out int thv)) th = Math.Max(16, thv);
+            }
+            int tw = (int)Math.Round(84 * ts);
+            double watts = 6.0;
+            string text = WattStyle.Format(watts) + "W";
+            var color = WattStyle.Total(watts);
+            using var tbmp = new System.Drawing.Bitmap(tw, th, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(tbmp))
+            using (var font = new System.Drawing.Font("Segoe UI", (float)(11.0 * ts),
+                       System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point))
+            using (var brush = new System.Drawing.SolidBrush(color))
+            using (var fmt = new System.Drawing.StringFormat
+            {
+                Alignment = System.Drawing.StringAlignment.Center,
+                LineAlignment = System.Drawing.StringAlignment.Center,
+                FormatFlags = System.Drawing.StringFormatFlags.NoWrap,
+            })
+            {
+                g.Clear(System.Drawing.Color.Transparent);
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                g.DrawString(text, font, brush, new System.Drawing.RectangleF(0, 0, tw, th), fmt);
+            }
+            tbmp.Save(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-taskbar-digit.png",
+                System.Drawing.Imaging.ImageFormat.Png);
+            LogSink.Write("[probe] rendered taskbar digit " + text + " " + tw + "x" + th);
+            return 0;
+        }
+
         // 向导排版自查：不联网也能看到三个阶段长什么样（二维码那一页只画占位框）
         if (Has(args, "--render-wizard"))
         {
