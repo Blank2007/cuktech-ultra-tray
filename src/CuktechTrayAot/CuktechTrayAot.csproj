@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>CuktechTray</AssemblyName>
+    <RootNamespace>CuktechTray</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.4.4</Version>
+    <PublishAot>true</PublishAot>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <StripSymbols>true</StripSymbols>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+  </ItemGroup>
+
+  <!-- 共享源码是按 WinForms 工程的隐式 using 写的，这里补齐 -->
+  <ItemGroup>
+    <Using Include="System.Drawing" />
+  </ItemGroup>
+
+  <!-- 协议层与数据层跟 WinForms 版共用同一份源码，改一处两边一起变 -->
+  <ItemGroup>
+    <Compile Include="..\CuktechTray\Models.cs" Link="Shared\Models.cs" />
+    <Compile Include="..\CuktechTray\SelfTest.cs" Link="Shared\SelfTest.cs" />
+    <Compile Include="..\CuktechTray\WattStyle.cs" Link="Shared\WattStyle.cs" />
+    <Compile Include="..\CuktechTray\LogSink.cs" Link="Shared\LogSink.cs" />
+    <Compile Include="..\CuktechTray\Settings.cs" Link="Shared\Settings.cs" />
+    <Compile Include="..\CuktechTray\DeviceClient.cs" Link="Shared\DeviceClient.cs" />
+    <Compile Include="..\CuktechTray\UpdateCheck.cs" Link="Shared\UpdateCheck.cs" />
+    <Compile Include="..\CuktechMible\*.cs" Link="Shared\Mible\%(Filename)%(Extension)" />
+    <Compile Include="..\probe-cs\WinRtMibleLink.cs" Link="Shared\WinRtMibleLink.cs" />
+    <!-- 扫码登录（小米云）也是共用一份：0.4.1 起向导也搬进了 AOT 外壳 -->
+    <Compile Include="..\CuktechLogin\XiaomiClient.cs" Link="Shared\Login\XiaomiClient.cs" />
+    <Compile Include="..\CuktechLogin\MiCrypto.cs" Link="Shared\Login\MiCrypto.cs" />
+    <Compile Include="..\CuktechLogin\Models.cs" Link="Shared\Login\Models.cs" />
+  </ItemGroup>
+
+</Project>

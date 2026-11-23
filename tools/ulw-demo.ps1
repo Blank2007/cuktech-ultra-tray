@@ -138,7 +138,7 @@ $st = [ULW]::GetWindowLong($h, -16)
 [void][ULW]::SetWindowPos($h, [IntPtr]::Zero, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010)
 Start-Sleep -Milliseconds 200
 $green = [System.Drawing.Color]::FromArgb(52, 211, 153)
-$painted = [ULW]::Paint($h, $w, $tbH, "32.2W", $green, 11.0, 0)
+$painted = [ULW]::Paint($h, $w, $tbH, "6.0W", $green, 11.0, 0)
 Write-Host ("tray=0x{0:X} tbH={1} scale={2} w={3} x={4} parent=0x{5:X} painted={6}" -f $tray.ToInt64(), $tbH, $scale, $w, $x, ([ULW]::GetParent($h)).ToInt64(), $painted)
 Set-Content -Path "D:\dsh projects\.tools\ulw-hwnd.txt" -Value ("0x{0:X}|{1}|{2}" -f $h.ToInt64(), $w, $tbH) -Encoding ASCII
 $end = (Get-Date).AddSeconds($Seconds)
@@ -146,7 +146,7 @@ $n = 0
 while ((Get-Date) -lt $end) {
   [System.Windows.Forms.Application]::DoEvents()
   $n++
-  if ($n % 10 -eq 0) { [void][ULW]::Paint($h, $w, $tbH, "32.2W", $green, 11.0, 0) }
+  if ($n % 10 -eq 0) { [void][ULW]::Paint($h, $w, $tbH, "6.0W", $green, 11.0, 0) }
   Start-Sleep -Milliseconds 100
   if (-not $f.IsHandleCreated) { break }
 }

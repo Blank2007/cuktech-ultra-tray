@@ -13,14 +13,15 @@
   <a href="https://github.com/Blank2007/cuktech-ultra-tray/releases/latest"><img src="https://img.shields.io/github/v/release/Blank2007/cuktech-ultra-tray" alt="Latest release"></a>
 </p>
 
-# CUKTECH 10 Ultra Tray Power Gauge — Read Total Power Right in the Tray
+# CUKTECH 10 Ultra Tray Power Gauge — Total Power, Right on the Taskbar
 
-A tiny app that is nothing but a tray icon: **the tray icon itself is the power gauge**. The number is the total output power across all four ports, and its color tracks the wattage;
-click it and you get voltage / current / power for all four ports on one screen, plus a direct way to cut the power.
+A tiny app with no main window: **total power sits in digits on the taskbar**, next to the Start button, updated once per second.
+Click the tray icon (or the digits) and the panel opens with voltage / current / power for all four ports, plus a direct way to cut the power.
 
 * Talks to the charger over **direct Bluetooth BLE** (our own implementation of Xiaomi MIoT encrypted authentication) — no gateway, no Mi Home app running in the background, and no network traffic once connected
-* The portable version is a **single-file exe** (69 MB, the target machine needs no .NET); there is also an installer (127 MB, with a wizard, shortcuts and an uninstaller)
-* Around 60 MB resident, sits quietly in the tray — no popups, no desktop clutter
+* The whole program is **one exe, 9.19 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
+* Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself
+* Tens of MB resident, sits quietly in the tray — no popups, no desktop clutter
 
 ---
 
@@ -38,24 +39,23 @@ click it and you get voltage / current / power for all four ports on one screen,
 
 | | |
 |---|---|
-| ⚡ **Read it right in the tray** | The tray icon is a power gauge: the number is the total power of all four ports, and the color follows the wattage (grey when disconnected / pale blue below 20 W / green 20–60 W / yellow 60–100 W / red at ≥100 W). No clicking, no hovering |
+| ⚡ **Total power at a glance** | A small digit strip at the far left of the taskbar shows the total output of all four ports, refreshed every second. The tray icon itself is just an on / off badge (green when connected, grey when not) |
 | 🖥️ **Four ports on one screen** | The panel opens straight onto C1 / C2 / C3 / A with voltage, current, power and total output, refreshed every second |
 | 🔵 **Bluetooth direct** | Full Xiaomi MIoT BLE authentication implemented from scratch (HKDF + HMAC + AES-CCM), measured at 3.7–4.6 s to authenticate; no Mi Home app in the loop, no gateway |
 | 📊 **Taskbar too** | A small strip at the far left of the taskbar, right next to the Start button, shows total power live — digits only, no icon and no background plate, and you can drag it somewhere else |
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
-| 📦 **Single file** | The portable version is a 69 MB self-contained exe: copy it to any writable folder and double-click. The installer adds a wizard, shortcuts and a clean uninstaller |
-| 🔄 **Checks for updates** | One click in the tray menu asks GitHub whether a newer version exists, and offers to open the download page. Only that click touches the network; nothing else does |
+| 📦 **Just one file** | A 9.19 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
+| 🔄 **Updates itself** | One click on "Check for updates" downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. Only that click touches the network; nothing else does |
 | 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * Installer ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-Setup-0.3.2.exe`, 127 MB)
-> * Portable ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.3.2.exe`, 69 MB, no installation)
+> * ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.4.0.exe`, 9.18 MB) — that single file is all you need
 >
-> This repo holds source only; neither exe is checked in (together they are nearly 200 MB), so please download them from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
-> Neither exe is **code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
+> This repo holds source only; the exe is not checked in, so please download it from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
+> It is **not code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
 
 ## What changed in each version
 
@@ -66,40 +66,37 @@ This document only covers how to use it.
 
 ## 0. Installation
 
-**Installing with the installer is recommended**: double-click `CuktechTray-Setup.exe` (about 127 MB; the main program is bundled inside, so the target machine needs no .NET).
+There is no separate installer file any more. `CuktechTray.exe` is one 9.19 MB file that plays both roles: portable build and installer.
 
-The wizard has four steps: Welcome → choose install location → installing → done. The default location is `%LOCALAPPDATA%\Programs\CuktechTray`,
-**it writes to the current user only (HKCU) and never triggers UAC**; you only need to run as administrator if you point it at a system folder such as `Program Files`.
+**Just run it**: copy it to any writable folder and double-click. `settings.json` and `logs/` are created next to it; the tray icon appears and the taskbar digits start flowing.
 
-The second page has four checkboxes, all on by default:
+**Or let it install itself**: tray menu → **Install on this PC…** (command line: `CuktechTray.exe --install [--dir=<path>] [--autostart] [--desktop] [--silent]`). It
 
-* Create a desktop shortcut
-* Create a Start menu shortcut (listed as "CUKTECH Tray Power Gauge", under the CuktechTray group)
-* Start with Windows (writes only to the current user's startup entry; it then just sits in the tray without showing the panel)
-* Launch immediately after installation
+* copies the running exe into `%LOCALAPPDATA%\Programs\CuktechTray` (or the folder you pick)
+* creates a Start menu shortcut ("CUKTECH Tray Power Gauge" under the CuktechTray group) and, with `--desktop`, a desktop shortcut
+* writes the per-user uninstall entry (Settings → Apps → Installed apps) and, with `--autostart`, the start-with-Windows entry
+* takes `settings.json` along if it sits next to the exe, so the device credentials you already set up keep working
 
-If an older version is already installed, double-clicking the new installer performs an **in-place upgrade**: it installs back into the same folder, config and logs are left alone,
-shortcuts and start-with-Windows stay as they are, and the version number in the uninstall entry is updated.
+**No UAC prompt at any point**: everything is written under the current user (HKCU, `%LOCALAPPDATA%`).
 
-Uninstall: Settings → Apps → Installed apps → "CUKTECH Tray Power Gauge", or just run `CuktechTray-Setup.exe --uninstall`.
-Uninstall clears the start-with-Windows entry, both shortcuts, the uninstall registry key and the install folder, then asks whether to delete the config as well.
+Uninstall: Settings → Apps → "CUKTECH Tray Power Gauge" → Uninstall, or tray menu → **Uninstall from this PC…** (shortcuts, registry keys and the install folder all go away).
+`CuktechTray.exe --uninstall` does the same from the command line.
 
-**Don't want to install?** `CuktechTray.exe` is a single-file portable build (about 69 MB); copy it to any writable folder and double-click.
-Config and logs are written next to the exe.
+Upgrade: tray menu → **Check for updates**. The menu entry reads "Install on this PC…" or "Uninstall from this PC…" depending on whether the running exe is the installed copy.
 
 ---
 
-## 1. Quick start (three steps)
+## 1. Quick start
 
 **Prerequisites**: the charger is already bound in the Mi Home app on your phone; the PC has a working Bluetooth adapter and Bluetooth is switched on (on Win11: Settings → Bluetooth & devices).
 
-On the first run the program finds no configured device and shows the wizard:
+**The first run pops up the QR-code wizard by itself** (since 0.4.1 the wizard lives in the native shell too, so the old build is no longer needed).
+Click "Scan the QR code with the Mi Home app" → **+** in the top right of the Mi Home app → Scan → pick your charger → "Use this one",
+and the credentials land in `settings.json`. Later runs need no scanning; to pair again, tray menu → "Reconfigure device…", or just `CuktechTray.exe --setup`.
 
-![First-run wizard](docs/shot-wizard.png)
+![The pairing wizard: scan once with Mi Home and the token lands on this PC](docs/shot-wizard.png)
 
-1. Click "Scan the QR code with the Mi Home app" and a QR code appears on screen;
-2. Scan it with the Mi Home app on your phone (**+** in the top right → Scan), then tap "Confirm login" on the phone;
-3. The program lists the Bluetooth devices under your account; pick your charger → "Use this one".
+If you would rather not: run `tools/token-fetch` (the original Python QR login), then hand-edit `settings.json` as shown in section 8.
 
 That's it — later runs need no scanning, and authentication takes about 4 seconds before numbers start appearing.
 
@@ -112,11 +109,11 @@ That's it — later runs need no scanning, and authentication takes about 4 seco
 
 ### Power panel
 
-![Power panel: four-port readings and total output](docs/shot-panel.png)
+![Power panel: four-port readings and total output](docs/aot-demo-read.png)
 
-A 320×360 borderless dark window with two tabs: **Read** (the default) and **Control**. Drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
+A 320×404 borderless dark window with two tabs: **Read** (the default) and **Control**. Drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
 
-* The top row holds the device name, the connection status pill (a green dot when connected, an amber dot when not) and the pin
+* The top row holds the device name, a status dot plus its label (green = connected, amber = connecting, red = offline, no fill) and the pin
 * **Read tab**: the large total output plus four rows of voltage, current and power for C1 / C2 / C3 / A, refreshed every second; ports with nothing plugged in read "Idle"
 * **It is just an ordinary window**: click the pin in the top right (or right-click the panel → Pin to desktop) and it stays on the desktop and remembers its position; click again to unpin.
   It is **not always-on-top and does not steal focus** — other windows cover it normally, it comes forward when clicked, and after a lock screen or user switch it never inexplicably ends up on top of everything
@@ -134,7 +131,7 @@ The small strip at the far left of the taskbar, right next to the Start button, 
 
 ### Control page
 
-![Control page: readings and switches for the four ports](docs/shot-control.png)
+![Control page: readings and switches for the four ports](docs/aot-demo-control.png)
 
 The panel's second tab (right-click the tray icon → "Show control page", or add `--control` at launch to flip straight to it).
 
@@ -143,7 +140,7 @@ The panel's second tab (right-click the tray icon → "Show control page", or ad
 
 ### Charge mode
 
-![Mode tab: four charge profiles, current one marked](docs/shot-mode.png)
+![Mode tab: four charge profiles, current one marked](docs/aot-demo-mode.png)
 
 The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene mode in the protocol, SIID 2 / PIID 5). Four profiles:
 
@@ -161,9 +158,10 @@ The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene
 
 ### Tray menu
 
-![Context menu: rounded and semi-transparent, green checks on the items that are on](docs/shot-menu.png)
+Right-clicking the tray icon gets you this menu; a left-click just shows or hides the panel.
 
-Right-clicking the tray icon gets you exactly this menu; a left-click just shows or hides the panel.
+> 0.4.0 removed the "Icon style" entry (the icon only has one look now, see above); every other entry is unchanged.
+> The three panel screenshots above are drawn by 0.4.0 itself (`--render --render-demo`, at 1.25× scaling), not old screen captures.
 
 * **It looks like Win11**: rounded corners, a rounded border, a semi-transparent background (acrylic blur), and the side padding and item spacing are matched to Win11's menu proportions
 * **On or off, visible at a glance**: whenever an item is an on / off toggle, an item that is on gets a green check on the left and an item that is off stays blank
@@ -173,9 +171,8 @@ Right-clicking the tray icon gets you exactly this menu; a left-click just shows
 
 ### Tray icon
 
-Five looks are available (context menu → Icon style); the default is "dark square with a colored bar at the bottom", and there are also large color block / solid color / bare digits with no background / lightning bolt:
-
-![The five icon styles side by side](docs/icons-compare.png)
+The icon is a status badge, not a gauge: a rounded square with a white lightning bolt, green while connected and grey while disconnected.
+0.4.0 dropped the icon styles and the power digits (five styles became one) — the wattage lives on the taskbar digit strip, and hovering the tray icon shows the total plus the four-port breakdown in the tooltip.
 
 ### Day-to-day use
 
@@ -183,7 +180,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
 * The full context menu: Show power panel / Show control page / Charge mode / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
-  Icon style / Reconnect / Reconfigure device / Check for updates / Start with Windows / Open log / Settings file / Exit
+  Reconnect / Check for updates / Install on this PC (Uninstall from this PC) / Start with Windows / Open log / Settings file / Exit
 * In that menu, "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
@@ -200,10 +197,15 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 | `--pin` | Pin the panel to the desktop at startup |
 | `--panel` | Show the panel centered on screen without auto-hiding (for checking layout in screenshots) |
 | `--control` | Flip the panel straight to the control page as it appears (with `--tray-only --control` only the control page opens) |
-| `--setup` | Force the first-run wizard open (for switching accounts or devices) |
+| `--setup` | Force the QR-code wizard open (`--wizard-demo` is the same thing, used for self-checks) |
 | `--selftest` | Run the "connect → authenticate → read four ports" regression once, write the result to the log, exit code 0/1 |
-| `--dump-icons` | Export a sample sheet of the five icon styles as `icons.png` |
-| `--check-update` | Ask GitHub once for the latest release and print current version / latest version / whether it went through a proxy or straight out |
+| `--check-update` | Ask GitHub once for the latest release; when a newer one is on offer the normal tray flow downloads it, verifies the SHA256 and restarts into it |
+| `--install [--dir=<path>] [--autostart] [--desktop] [--silent]` | Copy the running exe into `%LOCALAPPDATA%\Programs\CuktechTray`, create shortcuts, write the HKCU uninstall entry (same as the tray menu item) |
+| `--uninstall [--silent]` | Remove the shortcuts, the registry keys and the install folder |
+| `--render [--render-demo]` | Draw the three panel pages into 400x450 PNGs under `docs/` without a visible screen; `--render-demo` fills in a fake connected snapshot and **must be given together with `--render`** |
+| `--shortcut-test <lnk path>` | Only check that a `.lnk` gets created and read back correctly |
+| `--update-selftest` | Exercise the updater's file replacement on temp files only; never touches the running exe |
+| `--update-download-test --url= --sha= --size=` | Download one asset for real and verify size + SHA256 |
 
 ---
 
@@ -213,8 +215,9 @@ Five looks are available (context menu → Icon style); the default is "dark squ
 | --- | --- |
 | `src/CuktechMible/` | Protocol core library: authentication, encrypted frames, MiOT TLV codec (UI-free, reusable on its own) |
 | `src/CuktechLogin/` | Xiaomi cloud QR-code login library: QR code → serviceToken → device list → 12-byte BLE token |
-| `src/CuktechTray/` | The tray app itself (first-run wizard, power panel, control page, taskbar widget, icon drawing) |
-| `setup/` | Installer source (WinForms wizard, embeds the main program, ships its own uninstaller) |
+| `src/CuktechTrayAot/` | The 0.4.0 NativeAOT build: Win32 + GDI+ self-drawn panel / taskbar strip / menu / tray icon, plus the installer and the updater |
+| `src/CuktechTray/` | The 0.3.3 WinForms shell, kept as an archive (first-run wizard, panel, taskbar widget); the AOT build shares its protocol, data, settings and self-test sources |
+| `setup/` | The old installer source (a WinForms wizard wrapping the main program) — history since 0.4.0 |
 | `src/probe-cs/` | Command-line probe: `scan` / `diag` / `info` / `probe`, for protocol debugging |
 | `src/probe-rs/` | Rust feasibility check (btleplug scan + tray spike) |
 | `tools/token-fetch/` | The earliest Python QR-code login (kept for reference; the C# version is built in) |
@@ -233,7 +236,7 @@ Five looks are available (context menu → Icon style); the default is "dark squ
    summed for display. The full PIID table and the power byte layout are in that same document
 3. **Control**: the port switch is a bit mask, and the value is read back and verified after every write ([docs/control-protocol.md](docs/control-protocol.md))
 4. **Login**: scanning follows the Mi Home app's QR-code login flow; once a serviceToken is obtained, the device-list API is called to fetch the token
-5. **Windows**: the panel (its two tabs included) is custom-drawn WinForms; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
+5. **Windows**: since 0.4.0 the panel (both tabs included) is plain Win32 + GDI+, drawn by hand with no UI framework at all; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
    (the same trick as AF-Media-Bar), with details and the risk list in [docs/taskbar-component.md](docs/taskbar-component.md)
 
 ---
@@ -262,11 +265,11 @@ You need the .NET 8 SDK. Double-click **build.cmd** to build, **run.cmd** to lau
 If your execution policy blocks the `.ps1` scripts, start them with `powershell -ExecutionPolicy Bypass -File build.ps1`.
 
 ```powershell
-.\build.ps1            # build (Release)
-.\build.ps1 -Publish   # publish a single-file self-contained exe to dist\ (about 72 MB, no .NET needed on the target machine)
-.\run.ps1              # launch the tray app
-.\run.ps1 -Panel       # launch and pop the panel immediately
-.\build-setup.ps1      # pack the exe in dist\ into the installer dist\CuktechTray-Setup.exe
+.\build.ps1 -Aot             # NativeAOT build (0.4.0) -> src\CuktechTrayAot\out\CuktechTray.exe (about 9.2 MB)
+.\build.ps1 -Aot -Publish    # also copy it over dist\CuktechTray.exe
+.\run.ps1 -Aot -Panel        # launch the AOT build and pop the panel
+.\run.ps1                    # launch whatever was built last
+.\build.ps1                  # the old WinForms build (0.3.3) - archive only
 ```
 
 ---
@@ -282,14 +285,13 @@ the config automatically falls back to `%LOCALAPPDATA%\CuktechTray\settings.json
   "TokenHex": "00112233445566778899aabb",
   "PollMs": 1000,
   "AutoStart": false,
-  "IconStyle": "Dark",
   "PanelPinned": false,
   "TaskbarWidget": true,
   "ConfigVersion": 2
 }
 ```
 
-The `Mac` / `TokenHex` values above are placeholders; the real ones are written by the wizard and normally need no hand-editing.
+The `Mac` / `TokenHex` values above are placeholders; the real ones are written by the wizard (the archived WinForms build) or by `tools/token-fetch`, and normally need no hand-editing.
 They are device credentials, so delete them before pasting this anywhere (`.gitignore` already excludes `settings.json`).
 
 Logs: `<exe folder>\logs\app.log` (rotated to `app.old.log` above 512 KB); check it first when troubleshooting.
@@ -302,9 +304,11 @@ Logs: `<exe folder>\logs\app.log` (rotated to `app.old.log` above 512 KB); check
 
 | Component | Purpose | License |
 | --- | --- | --- |
-| .NET 8 / Windows Forms | Runtime, tray, window drawing | MIT |
+| .NET 8 / NativeAOT (ILCompiler) | Ahead-of-time compilation, and the tiny footprint | MIT |
+| System.Drawing.Common | GDI+ drawing of the self-drawn UI | MIT |
 | System.Text.Json (BCL) | Config file and API parsing | MIT |
-| Apart from WiX: none — the installer is handwritten WinForms | — | — |
+| .NET 8 / Windows Forms | The archived 0.3.3 build only | MIT |
+| Apart from that: none — no third-party installer framework any more | — | — |
 
 See [第三方组件许可.txt](第三方组件许可.txt) and [NOTICE](NOTICE) for details.
 
@@ -320,7 +324,7 @@ should any be used later, the MIT license and copyright notice will be preserved
 
 * Limited controls: only on / off for the four ports so far. Scene modes, screen-off time and language are PIIDs that have also been tested as writable, they simply have no UI yet
 * Power accuracy is capped by the device: only 0.1 V / 0.1 A resolution
-* The portable version has no uninstaller of its own: before deleting the folder by hand, turn off "Start with Windows" in the tray menu, otherwise a dead link is left behind in the registry
+* One-click updating only works from 0.4.0 onwards: anything older has to be replaced by hand once
 * The Rust version is still just a spike, with no complete protocol implementation
 
 ### Contact me

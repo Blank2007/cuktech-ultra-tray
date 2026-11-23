@@ -1,6 +1,17 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CuktechTray;
+
+/// <summary>
+/// AOT 下的序列化入口：ILC 会把反射版 JsonSerializer 的反射元数据裁掉，
+/// 所以这里用源生成器把 Settings 的读写编译成直接代码（WinForms 老版本也走这条，行为一致）。
+/// </summary>
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(Settings))]
+internal sealed partial class SettingsJsonContext : JsonSerializerContext
+{
+}
 
 /// <summary>托盘程序的本地配置：设备 MAC + 12 字节登录 token（从工具链导出的 result.json 自动导入）。</summary>
 internal sealed class Settings
@@ -89,7 +100,7 @@ internal sealed class Settings
         {
             try
             {
-                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath));
+                var s = JsonSerializer.Deserialize(File.ReadAllText(FilePath), SettingsJsonContext.Default.Settings);
                 if (s is not null && s.IsComplete)
                 {
                     // v1：常驻面板不再等于「总在最前」。旧配置里那个 true 是程序自己写的，不是用户选的。
@@ -123,7 +134,7 @@ internal sealed class Settings
     {
         try
         {
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, SettingsJsonContext.Default.Settings));
         }
         catch { /* 只读目录下静默失败，不影响运行 */ }
     }

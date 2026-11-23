@@ -15,7 +15,13 @@ internal static class UpdateCheck
     private static readonly Uri LatestApi = new("https://api.github.com/repos/Blank2007/cuktech-ultra-tray/releases/latest");
 
     /// <summary>Ok=false 表示这次没问成（没网、被墙、GitHub 限流），Error 里是原因。</summary>
-    internal readonly record struct Result(bool Ok, Version? Latest, string ReleaseUrl, string Error, string Via);
+    /// <para>
+    /// Asset* 是给「一键更新」用的：Release 里那份 CuktechTray-x.y.z.exe 的下载地址、字节数、SHA256。
+    /// 老 release（或者只有 Setup 包的那次发布）可能一个都没有，那就退化成「打开下载页」。
+    /// </para>
+    internal readonly record struct Result(
+        bool Ok, Version? Latest, string ReleaseUrl, string Error, string Via,
+        string AssetUrl = "", string AssetName = "", long AssetSize = 0, string AssetSha256 = "");
 
     /// <summary>当前 exe 的版本号，去掉第四段（0.3.1.0 → 0.3.1）。</summary>
     public static Version Current
@@ -33,7 +39,7 @@ internal static class UpdateCheck
         // 国内直连 api.github.com 多半连不上（或者被塞回一张 HTML 拦截页），
         // 而 .NET 8 的 HttpClient 又不会去读系统的代理设置。所以：
         // 先按注册表里的系统代理试一次，不行再直连一次。
-        var proxy = SystemProxy();
+        var proxy = Proxy();
         var errors = new List<string>();
 
         if (proxy is not null)
@@ -54,11 +60,7 @@ internal static class UpdateCheck
     {
         try
         {
-            var handler = new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(8) };
-            if (proxy is not null) { handler.Proxy = proxy; handler.UseProxy = true; }
-            else { handler.UseProxy = false; }
-
-            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
+            using var http = CreateHttp(proxy, TimeSpan.FromSeconds(12));
             http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "CuktechTray/" + Current);
             http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/vnd.github+json");
 
@@ -83,7 +85,9 @@ internal static class UpdateCheck
 
             string tag = root.TryGetProperty("tag_name", out var t) ? (t.GetString() ?? "") : "";
             string url = root.TryGetProperty("html_url", out var u) ? (u.GetString() ?? "") : RepoUrl + "/releases";
-            return new Result(true, ParseVersion(tag), url, "", via);
+            var asset = PickAsset(root);
+            return new Result(true, ParseVersion(tag), url, "", via,
+                asset.Url ?? "", asset.Name ?? "", asset.Size, asset.Sha256 ?? "");
         }
         catch (Exception ex)
         {
@@ -91,8 +95,62 @@ internal static class UpdateCheck
         }
     }
 
+    /// <summary>
+    /// 从 Release 的 assets 里挑出可以原地替换的主程序：名字形如 CuktechTray-0.4.0.exe。
+    /// Setup 那个是老安装包（0.4.0 起不再发布），一定要跳过，否则会下载成 127 MB 的旧壳子。
+    /// SHA256 来自 API 的 digest 字段（形如 "sha256:74fd..."），拿不到就留空、只校验大小。
+    /// </summary>
+    private static (string? Name, string? Url, long Size, string? Sha256) PickAsset(JsonElement root)
+    {
+        if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
+            return default;
+
+        foreach (var a in assets.EnumerateArray())
+        {
+            if (a.ValueKind != JsonValueKind.Object) continue;
+
+            string name = a.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String
+                ? (n.GetString() ?? "") : "";
+            if (!name.StartsWith("CuktechTray-", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase)) continue;
+
+            string url = a.TryGetProperty("browser_download_url", out var b) && b.ValueKind == JsonValueKind.String
+                ? (b.GetString() ?? "") : "";
+            if (url.Length == 0) continue;
+
+            long size = a.TryGetProperty("size", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt64() : 0;
+
+            string sha = "";
+            if (a.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String)
+            {
+                string raw = d.GetString() ?? "";
+                int colon = raw.IndexOf(':');
+                if (colon > 0 && raw[..colon].Equals("sha256", StringComparison.OrdinalIgnoreCase))
+                    sha = raw[(colon + 1)..].Trim();
+            }
+
+            return (name, url, size, sha);
+        }
+
+        return default;
+    }
+
+    /// <summary>
+    /// 统一造 HttpClient：不带系统代理时 <c>UseProxy=false</c> 才是真的直连
+    /// （.NET 8 的 HttpClient 默认不读系统代理，这里手动喂）。
+    /// 下载更新时也用这一份，免得两处各写一套代理逻辑。
+    /// </summary>
+    internal static HttpClient CreateHttp(IWebProxy? proxy, TimeSpan timeout)
+    {
+        var handler = new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(8) };
+        if (proxy is not null) { handler.Proxy = proxy; handler.UseProxy = true; }
+        else handler.UseProxy = false;
+        return new HttpClient(handler) { Timeout = timeout };
+    }
+
     /// <summary>读 IE/系统代理设置（Clash、v2rayN 这类工具都写这儿）。没开代理返回 null。</summary>
-    private static IWebProxy? SystemProxy()
+    internal static IWebProxy? Proxy()
     {
         try
         {
