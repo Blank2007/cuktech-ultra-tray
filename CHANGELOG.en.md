@@ -15,6 +15,7 @@ The UI and the feature set are identical to 0.4.4. What changed here is the evid
   The old README taskbar image was a 0.2.2 demo capture and even had the wrong colour — 6.0 W is light blue under the current buckets, the old picture drew it green
 - README "Power on the taskbar" got a new image and new wording: `docs/shot-taskbar.png` plus a colour-bucket table (grey / light blue / green / amber / red) explaining why the 6.0W in the picture is light blue (both languages)
 - The two stale promo assets (the 0.2/0.3 "five icon styles" matrix and the 0.3.3 WinForms menu capture) were replaced with the 0.4.4 originals (the video project is not part of this repo)
+- The download lines used to hard-code `CuktechTray-0.4.0.exe` / 9.19 MB; they now say `CuktechTray-<version>.exe` / 10.4 MB so they stop going stale on every release
 - Version 0.4.4 → 0.4.5; **no functional or visual change** — upgrading from 0.4.4 looks exactly the same
 
 ## 0.4.4 — 2026-11-23

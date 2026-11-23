@@ -19,7 +19,7 @@ A tiny app with no main window: **total power sits in digits on the taskbar**, n
 Click the tray icon (or the digits) and the panel opens with voltage / current / power for all four ports, plus a direct way to cut the power.
 
 * Talks to the charger over **direct Bluetooth BLE** (our own implementation of Xiaomi MIoT encrypted authentication) — no gateway, no Mi Home app running in the background, and no network traffic once connected
-* The whole program is **one exe, 9.19 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
+* The whole program is **one exe, 10.4 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
 * Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself
 * Tens of MB resident, sits quietly in the tray — no popups, no desktop clutter
 
@@ -46,13 +46,13 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
-| 📦 **Just one file** | A 9.19 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
+| 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
 | 🔄 **Updates itself** | One click on "Check for updates" downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. Only that click touches the network; nothing else does |
 | 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-0.4.0.exe`, 9.18 MB) — that single file is all you need
+> * ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-<version>.exe`, 10.4 MB) — that single file is all you need
 >
 > This repo holds source only; the exe is not checked in, so please download it from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > It is **not code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
@@ -66,7 +66,7 @@ This document only covers how to use it.
 
 ## 0. Installation
 
-There is no separate installer file any more. `CuktechTray.exe` is one 9.19 MB file that plays both roles: portable build and installer.
+There is no separate installer file any more. `CuktechTray.exe` is one 10.4 MB file that plays both roles: portable build and installer.
 
 **Just run it**: copy it to any writable folder and double-click. `settings.json` and `logs/` are created next to it; the tray icon appears and the taskbar digits start flowing.
 
@@ -283,7 +283,7 @@ You need the .NET 8 SDK. Double-click **build.cmd** to build, **run.cmd** to lau
 If your execution policy blocks the `.ps1` scripts, start them with `powershell -ExecutionPolicy Bypass -File build.ps1`.
 
 ```powershell
-.\build.ps1 -Aot             # NativeAOT build (0.4.0) -> src\CuktechTrayAot\out\CuktechTray.exe (about 9.2 MB)
+.\build.ps1 -Aot             # NativeAOT build (0.4.0) -> src\CuktechTrayAot\out\CuktechTray.exe (about 10.4 MB)
 .\build.ps1 -Aot -Publish    # also copy it over dist\CuktechTray.exe
 .\run.ps1 -Aot -Panel        # launch the AOT build and pop the panel
 .\run.ps1                    # launch whatever was built last
