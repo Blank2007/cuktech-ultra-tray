@@ -24,6 +24,7 @@
 7. **先方案、后动手；推送前必须问**：加功能或改行为之前，先说清楚要做什么、怎么做、影响哪些文件，等用户点头再写代码。
    打安装包、推 GitHub、发 Release、往用户机器目录（`D:\KTK`）部署，每一步都要先问一句「要发吗」，得到明确同意才执行。
    未经同意只允许在本机做只读检查、编译和自测。
+   例外：发版与推送的具体步骤已由用户点头（见下「发版与推送（SOP）」），按那份 SOP 走不必每次再问。
 
 ## 构建
 
@@ -31,7 +32,7 @@
 
 ```powershell
 .\build.ps1              # WinForms 版（0.3.3）Release 构建
-.\build.ps1 -Aot         # NativeAOT 版（0.4.0）-> src\CuktechTrayAot\out\CuktechTray.exe（约 9.2 MB）
+.\build.ps1 -Aot         # NativeAOT 版（0.4.0）-> src\CuktechTrayAot\out\CuktechTray.exe（约 10.4 MB）
 .\build.ps1 -Aot -Publish # 再拷成 dist\CuktechTray.exe（覆盖绿色版，发布前必须先问用户）
 .\build.ps1 -Publish     # 单文件自包含 exe -> dist\CuktechTray.exe（约 72 MB）
 .\build-setup.ps1        # 把 exe 压缩嵌进安装程序 -> dist\CuktechTray-Setup.exe（约 127 MB）
@@ -53,7 +54,7 @@
 协议层、数据层、设置、自测这些**共用 WinForms 版的那份源码**（`CuktechTrayAot.csproj` 里用
 `<Compile Include="..\CuktechTray\XXX.cs" Link="Shared\XXX.cs" />` 引进来，改一处两边一起变）。
 
-* 产物 `src\CuktechTrayAot\out\CuktechTray.exe`：9,633,792 字节（9.19 MB），单文件，目标机不装 .NET 也能跑。
+* 产物 `src\CuktechTrayAot\out\CuktechTray.exe`：0.4.5 实测 10,879,488 字节（10.38 MB），单文件，目标机不装 .NET 也能跑。
   其中 273,408 字节是内置的安装/卸载与自动更新（见下），换句话说：**这一个 exe 既是绿色版、也是安装包，还能自己升级自己**。
 * 构建用 `.\build.ps1 -Aot`。AOT 要 C 链接器，本机没有 MSVC/vcvarsall，脚本自己用
   `.tools\lld\lld-link.exe` + `.tools\xwin` 的 crt/ucrt/um 库，设 `LIB` 并传
@@ -106,6 +107,33 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
 
 **坑**：连续快速重启进程会让 BLE 连接来不及释放，认证失败（`AccessDenied` 或
 `未收到 RCV_RDY`）。关掉程序等 20 秒以上再启动。
+
+## 发版与推送（SOP）
+
+用户 2026-11-23 定的标准：**Release 只挂一个 exe**。以后按这份走，不用再问「要不要发 zip」。
+
+1. 改版本号：`src/CuktechTrayAot/CuktechTrayAot.csproj` 的 `<Version>`（0.4.0 起只维护 AOT 版）。
+2. 构建：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Aot -Publish`。
+   先 `Stop-Process` 掉残留的 `out\CuktechTray.exe`，否则链接阶段报 MSB3027（文件被另一进程使用）。
+3. 回归：`dist\CuktechTray.exe --selftest`，日志要出现 `[ok] 认证完成 …固件=…` 与 `[cfg] port_switch=0x0f`。
+4. 取真实值：`(Get-Item dist\CuktechTray.exe).Length` 与 `Get-FileHash -Algorithm SHA256`，Release 正文里的字节数和哈希必须是实测的。
+5. 写两处文档：`CHANGELOG.md` / `CHANGELOG.en.md` 顶部加一节；`docs/release-<版本>.md` 与 `docs/release-<版本>.en.md` 写 Release 正文草稿
+   （结构：一句话 / 这次改了什么按版本倒序 / 怎么升级 / 文件 / 校验 / 系统要求 / 已知）。
+6. 把 `dist\CuktechTray.exe` 另存一份 `dist\CuktechTray-<版本>.exe`——自动更新只认这个名字（`UpdateCheck.PickAsset`，含 `Setup` 的会被跳过）。
+7. 提交并推送 commit（主题行「<版本>: 一句话」，正文列改动），然后 `git tag -a v<版本> -m "<版本>: <一句话>"` 并推 tag。
+   git 在 `D:\dsh projects\.tools\git\cmd\git.exe`（不在 PATH）；push 要带 `-c http.extraheader=AUTHORIZATION: basic <base64(x-access-token:token)>`，
+   token 在 `D:\dsh projects\.secrets\github-token.txt`（在仓库目录之外，绝不进仓库）。
+8. 建 Release：`POST /repos/Blank2007/cuktech-ultra-tray/releases`，`tag_name` 用刚推的 tag，
+   `name` 用 release 稿的 H1（去掉 `# `），`body` 用 release 稿但**删掉开头那句「这份是发 GitHub Release 用的正文草稿」引用行**。
+9. 只上传一个资产：`CuktechTray-<版本>.exe`（`POST https://uploads.github.com/…/releases/<id>/assets?name=…`）。
+
+不要做的事：
+
+* **不传 zip 包、不传 `SHA256SUMS.txt`**，正文里也不要列这些不存在的文件。用户的判断是「没必要」：
+  zip 只是把仓库里已有的 README/CHANGELOG 再打一遍包（4.8 MB），哈希在正文和资产页都能看。
+* **不留 draft Release**。曾经留过一个 `v0.4.0` 草稿，连 tag 都指在 0.3.3 的 commit 上，2026-11-23 已删。
+* 不把 `dist\settings.json`（含真实 MAC 与 token）、`logs\`、`dist\` 提交进仓库；打 tag 前 `git status` 必须是干净的。
+* `--render*` / `--font-probe` 这类自查开关可以随版本发出去，但不要写进「功能」段落当卖点。
 
 ## 代码地图
 
