@@ -1,0 +1,71 @@
+name: macos
+
+on:
+  push:
+    paths:
+      - "mac/**"
+      - ".github/workflows/macos.yml"
+  pull_request:
+    paths:
+      - "mac/**"
+      - ".github/workflows/macos.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol-tests:
+    name: core tests (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: swift --version
+      - name: swift test
+        run: swift test --package-path mac
+
+  build-macos:
+    name: build (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          uname -m
+          sw_vers
+      - name: build
+        run: swift build -c release --package-path mac
+      - name: make app
+        run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
+      - name: selftest
+        run: dist/CuktechTray.app/Contents/MacOS/CuktechTray --selftest
+      - name: launch and try to screenshot
+        run: |
+          set +e
+          open dist/CuktechTray.app
+          sleep 6
+          pgrep -fl CuktechTray
+          echo "--- screencapture ---"
+          screencapture -x shot.png
+          echo "screencapture exit=$?"
+          ls -l shot.png 2>/dev/null
+          echo "--- app log ---"
+          pkill -f CuktechTray
+          true
+      - name: pack
+        run: tar -czf dist/CuktechTray-0.4.5-mac-${{ matrix.runner }}.tar.gz -C dist CuktechTray.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m0-${{ matrix.runner }}
+          path: |
+            dist/*.tar.gz
+            shot.png
+          if-no-files-found: warn

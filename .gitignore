@@ -28,3 +28,11 @@ research/
 .idea/
 *.user
 Thumbs.db
+.DS_Store
+
+# SwiftPM 构建产物（mac/ 目录是纯 SwiftPM 工程，不产生 Xcode 工程文件）
+mac/.build/
+mac/.swiftpm/
+
+# dotnet 在源码目录里留下的 NuGet 迁移目录
+NuGet/

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>CuktechTray</string>
+	<key>CFBundleDisplayName</key>
+	<string>酷态科功率</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.blank2007.cuktechtray.mac</string>
+	<key>CFBundleExecutable</key>
+	<string>CuktechTray</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>用来直连酷态科充电器读取四路电压、电流与功率。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>用来直连酷态科充电器读取四路电压、电流与功率。</string>
+</dict>
+</plist>

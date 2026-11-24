@@ -1,0 +1,48 @@
+{
+  "note": "Mible 认证链路加密黄金向量。由 Windows 侧 C#（.NET 8 System.Security.Cryptography）生成，macOS Swift 版必须逐字节复现；任一位不同即视为实现错误。生成路径：D:/dsh projects/cuktech-ultra-tray/docs/mac-plan.md 第 2 节。",
+  "generatedBy": ".tools/ccmtest (AesCcm / HKDF / HMACSHA256)",
+  "aesCcm": [
+    {
+      "name": "aes-ccm tag4 (MiBeacon 实际用法)",
+      "key": "000102030405060708090a0b0c0d0e0f",
+      "nonce": "101112131415161718191a1b1c",
+      "plaintextAscii": "hello-mible-payload!",
+      "ciphertext": "14841c2dd77183bdd9352dbc5f6615ed45b23158",
+      "tag": "7bd0e208",
+      "note": "密文与 tag 长度无关，tag 才是随 t 变的；MiBeacon 用 4 字节 tag、13 字节 nonce"
+    },
+    {
+      "name": "aes-ccm tag8",
+      "key": "000102030405060708090a0b0c0d0e0f",
+      "nonce": "101112131415161718191a1b1c",
+      "plaintextAscii": "hello-mible-payload!",
+      "ciphertext": "14841c2dd77183bdd9352dbc5f6615ed45b23158",
+      "tag": "7c44ff1594e68d57"
+    },
+    {
+      "name": "aes-ccm tag16",
+      "key": "000102030405060708090a0b0c0d0e0f",
+      "nonce": "101112131415161718191a1b1c",
+      "plaintextAscii": "hello-mible-payload!",
+      "ciphertext": "14841c2dd77183bdd9352dbc5f6615ed45b23158",
+      "tag": "050c7348cfc516bb9ab88a295358876f"
+    }
+  ],
+  "keyDerivation": {
+    "name": "HKDF-SHA256 派生会话密钥（MibleSession.cs:153-160 同一顺序）",
+    "token": "00112233445566778899aabbccddeeff",
+    "randKey": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    "devRandom": "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+    "salt": "app_random||dev_random",
+    "saltInv": "dev_random||app_random",
+    "info": "mible-login-info",
+    "outputLen": 64,
+    "derived64": "dbda7471e98fe1af47d8bf0d3fe01d98ad420e3a289367172a14d0adf1e41be54d355491bb3ba21f34309668d411a88f353db82bebd264f175b498eb39bae2b5",
+    "devKey": "dbda7471e98fe1af47d8bf0d3fe01d98",
+    "appKey": "ad420e3a289367172a14d0adf1e41be5",
+    "devIv": "4d355491",
+    "appIv": "bb3ba21f",
+    "hmacDevKeySaltInv": "b088d60aefc6b25bb249aca259406215af2a5e46356453c4c2bdbc66de12c56c",
+    "hmacAppKeySalt": "77759edcee3a20e233ba76dbc06b7c06a9f8134a3032a522e00bf204ab591d03"
+  }
+}
