@@ -65,7 +65,7 @@ public final class MibleSession: @unchecked Sendable {
     private static let rcvRdy: [UInt8]       = [0x00, 0x00, 0x01, 0x01]
     private static let rcvOk: [UInt8]        = [0x00, 0x00, 0x01, 0x00]
     private static let keepAlive: [UInt8]    = [0x00, 0x00, 0x03, 0x00]
-    private static let hkdfInfo: [UInt8]     = Array("mible-login-info".utf8)
+    private static let hkdfInfo: String      = "mible-login-info"
     private static let maxFrames = 100
 
     private let link: MibleLink
@@ -195,7 +195,7 @@ public final class MibleSession: @unchecked Sendable {
         let salt = randKey + devRandom       // app_random || dev_random
         let saltInv = devRandom + randKey    // dev_random || app_random
 
-        let derived = try MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: Self.hkdfInfo, outputByteCount: 64)
+        let derived = MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: Self.hkdfInfo, outputByteCount: 64)
         devKey = Array(derived[0..<16])
         appKey = Array(derived[16..<32])
         devIv = Array(derived[32..<36])

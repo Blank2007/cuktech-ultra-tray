@@ -20,7 +20,15 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
-func json(_ body: String, status: Int = 200, cookies: [(String, String)] = []) -> HTTPResponse {
+/// 收集客户端日志。XiaomiClient 的 logger 是 @Sendable，闭包里不能直接改外面 var 数组。
+final class LogBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func append(_ line: String) { lock.lock(); items.append(line); lock.unlock() }
+    var lines: [String] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+func json(_ body: String, status: Int = 200, cookies: [(name: String, value: String)] = []) -> HTTPResponse {
     HTTPResponse(status: status,
                  headers: ["content-type": "application/json"],
                  body: Data(body.utf8),
@@ -162,7 +170,7 @@ final class XiaomiClientTests: XCTestCase {
 
             // 3) 长轮询：直接判「已扫码」
             if url.host == "lp.example" {
-                return json(#"{"userId":"12345","ssecurity":"#(ssecurity)","location":"https://login.example/loc"}"#)
+                return json(#"{"userId":"12345","ssecurity":"\#(ssecurity)","location":"https://login.example/loc"}"#)
             }
 
             // 4) location 跟随：第一次 302 带 serviceToken，第二次 200
@@ -200,9 +208,9 @@ final class XiaomiClientTests: XCTestCase {
             }
         }
 
-        var lines: [String] = []
+        let log = LogBox()
         let client = XiaomiClient(transport: transport, agent: "test-agent", deviceId: "testdevice000001") { line in
-            lines.append(line)
+            log.append(line)
         }
 
         let ticket = try await client.requestQr()
@@ -216,7 +224,8 @@ final class XiaomiClientTests: XCTestCase {
         let login = try await client.waitForScan(ticket)
         XCTAssertEqual(login.userId, "12345")
         XCTAssertEqual(login.serviceToken, "ST-123")
-        XCTAssertTrue(await client.isLoggedIn)
+        let loggedIn = await client.isLoggedIn
+        XCTAssertTrue(loggedIn)
 
         let devices = try await client.devices()
         XCTAssertEqual(devices.count, 2)
@@ -226,7 +235,7 @@ final class XiaomiClientTests: XCTestCase {
         XCTAssertTrue(devices.first!.isCuktech)
         // 第二台不是酷态科也不像 BLE，不该去问 beaconkey
         XCTAssertNil(devices.last?.tokenHex)
-        XCTAssertFalse(lines.isEmpty)
+        XCTAssertFalse(log.lines.isEmpty)
     }
 
     func testBeaconKeyPathForBleCandidateWithoutListedToken() async throws {
@@ -237,7 +246,7 @@ final class XiaomiClientTests: XCTestCase {
                 return json(#"{"qr":"https://qr.example/a.png","lp":"https://lp.example/poll","timeout":"180"}"#)
             }
             if url.host == "lp.example" {
-                return json(#"{"userId":"1","ssecurity":"#(ssecurity)","location":"https://login.example/loc"}"#)
+                return json(#"{"userId":"1","ssecurity":"\#(ssecurity)","location":"https://login.example/loc"}"#)
             }
             if url.host == "login.example" {
                 return HTTPResponse(status: 200, headers: [:], body: Data(),
@@ -292,16 +301,43 @@ final class XiaomiClientTests: XCTestCase {
     }
 
     func testSessionRoundTrip() async throws {
-        let transport = FakeTransport { _ in json("{}") }
-        let client = XiaomiClient(transport: transport, agent: "a", deviceId: "b")
+        let ssecurity = self.ssecurity
+        let transport = FakeTransport { request in
+            let url = request.url
+            switch url.path {
+            case "/longPolling/loginUrl":
+                return json(#"{"qr":"https://qr.example/a.png","lp":"https://lp.example/poll","timeout":"180"}"#)
+            case "/poll":
+                return json(#"{"userId":"12345","ssecurity":"\#(ssecurity)","location":"https://login.example/loc"}"#)
+            case "/loc":
+                return HTTPResponse(status: 200, headers: [:], body: Data(),
+                                    cookies: [(name: "serviceToken", value: "ST-9")])
+            default:
+                return json("{}", status: 404)
+            }
+        }
+
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cuktech-session-test")
         try? FileManager.default.removeItem(at: dir)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("session.json")
+        defer { try? FileManager.default.removeItem(at: dir) }
 
-        // 手工灌入状态（用端到端流程太重）
-        let seeded = XiaomiClient(transport: transport, agent: "a", deviceId: "b")
-        try await seeded.loadSession(from: file) // 先造一个再来回
-        XCTAssertFalse(await client.isLoggedIn)
+        let client = XiaomiClient(transport: transport, agent: "a", deviceId: "b")
+        let ticket = try await client.requestQr()
+        _ = try await client.waitForScan(ticket)
+        try await client.saveSession(to: file)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        let reloaded = XiaomiClient(transport: transport, agent: "a", deviceId: "b")
+        try await reloaded.loadSession(from: file)
+        let userId = await reloaded.userId
+        let token = await reloaded.serviceToken
+        let session = await reloaded.ssecurity
+        let loggedIn = await reloaded.isLoggedIn
+        XCTAssertEqual(userId, "12345")
+        XCTAssertEqual(token, "ST-9")
+        XCTAssertEqual(session, ssecurity)
+        XCTAssertTrue(loggedIn)
     }
 }

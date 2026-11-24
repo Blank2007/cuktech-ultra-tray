@@ -70,7 +70,7 @@ final class FakeDeviceLink: MibleLink, @unchecked Sendable {
 
     private func deriveKeys() {
         let salt = randKey + devRandom
-        let derived = try! MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: "mible-login-info", outputByteCount: 64)
+        let derived = MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: "mible-login-info", outputByteCount: 64)
         devKey = Array(derived[0..<16])
         appKey = Array(derived[16..<32])
         devIv = Array(derived[32..<36])
