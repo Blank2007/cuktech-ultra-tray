@@ -30,6 +30,11 @@ public actor DeviceSession {
 
     public func isRunning() -> Bool { running }
 
+    /// 界面侧要在启动前注入这几项；actor 的存储属性不能从外面直接改，所以开三个门。
+    public func setPollInterval(_ v: TimeInterval) { pollInterval = max(0.5, v) }
+    public func setLogHandler(_ handler: ((String) -> Void)?) { onLog = handler }
+    public func setSnapshotHandler(_ handler: ((DeviceSnapshot) -> Void)?) { onSnapshot = handler }
+
     public func start() async {
         guard !running else { return }
         running = true
