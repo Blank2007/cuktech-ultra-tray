@@ -46,6 +46,18 @@ public struct MiDevice: Sendable, Equatable, Identifiable {
     public let isCuktech: Bool
     public let isOnline: Bool
 
+    public init(did: String, name: String, model: String, mac: String,
+                tokenHex: String?, tokenSource: String, isCuktech: Bool, isOnline: Bool) {
+        self.did = did
+        self.name = name
+        self.model = model
+        self.mac = mac
+        self.tokenHex = tokenHex
+        self.tokenSource = tokenSource
+        self.isCuktech = isCuktech
+        self.isOnline = isOnline
+    }
+
     public var id: String { did }
     /// 12 字节 = 24 位 hex，长度不对的一律当没拿到。
     public var hasToken: Bool { tokenHex?.count == 24 }

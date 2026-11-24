@@ -60,16 +60,18 @@ jobs:
           echo "--- app log ---"
           pkill -f CuktechTray
           true
-      - name: pairing wizard screenshot
+      - name: pairing wizard screenshots
         run: |
           set +e
-          dist/CuktechTray.app/Contents/MacOS/CuktechTray --wizard-demo &
-          sleep 5
-          pgrep -fl CuktechTray
-          screencapture -x wizard.png
-          echo "wizard screencapture exit=$?"
-          ls -l wizard.png 2>/dev/null
-          pkill -f CuktechTray
+          for screen in welcome login pick done; do
+            dist/CuktechTray.app/Contents/MacOS/CuktechTray --wizard-demo=$screen &
+            sleep 4
+            screencapture -x wizard-$screen.png
+            echo "[shot] $screen exit=$?"
+            pkill -f CuktechTray
+            sleep 1
+          done
+          ls -l wizard-*.png
           true
       - name: pack
         run: bash mac/scripts/package.sh dist
@@ -79,7 +81,7 @@ jobs:
           path: |
             dist/*.zip
             shot.png
-            wizard.png
+            wizard-*.png
           if-no-files-found: warn
 
   # tag（与 Windows 同版本号，例如 v0.4.5）时把 .app 打成 zip 传到 Release。

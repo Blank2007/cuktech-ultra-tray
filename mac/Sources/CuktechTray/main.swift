@@ -50,11 +50,15 @@ app.setActivationPolicy(.accessory)   // 菜单栏 app：不占 Dock、不进 Cm
 let controller = TrayController(settings: AppSettings.load())
 let delegate = AppDelegate(controller: controller)
 
-if args.contains("--wizard-demo") {
-    // 文档与 CI 截图用：只把向导第一屏摆出来，不联网、不碰蓝牙。
+if let demoArg = args.first(where: { $0 == "--wizard-demo" || $0.hasPrefix("--wizard-demo=") }) {
+    // 文档与 CI 截图用：把向导的某一屏摆出来（welcome / login / pick / done），
+    // 填的是假数据，不联网、不碰蓝牙。
+    let screen = demoArg.contains("=")
+        ? String(demoArg.split(separator: "=", maxSplits: 1)[1])
+        : "welcome"
     DispatchQueue.main.async {
-        WizardController.show(settings: AppSettings())
-        print("[wizard] demo window shown")
+        WizardController.show(settings: AppSettings(), demo: screen)
+        print("[wizard] demo window shown (\(screen))")
         fflush(stdout)
     }
 } else {

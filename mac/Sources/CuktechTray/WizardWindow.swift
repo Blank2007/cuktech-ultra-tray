@@ -151,6 +151,80 @@ final class WizardModel: ObservableObject {
         onClose?()
     }
 
+    // MARK: - 演示数据（CI 截图与文档用，不联网、不碰蓝牙）
+
+    /// 把某一屏直接填成假数据。--wizard-demo=<welcome|login|pick|done> 用。
+    func loadDemo(_ name: String) {
+        error = nil
+        busy = false
+        switch name {
+        case "login":
+            step = .login
+            status = "等你扫码（这个码 120 秒内有效）"
+            qrImage = WizardModel.demoQRCode()
+        case "pick":
+            step = .pick
+            status = "从下面挑出你这台充电器"
+            devices = [
+                MiDevice(did: "672601331", name: "酷态科 10 号 Ultra", model: "njcuk.fitting.ad1204",
+                         mac: "3C:CD:73:27:61:A0", tokenHex: "00112233445566778899aabb",
+                         tokenSource: "云端", isCuktech: true, isOnline: true),
+                MiDevice(did: "1043902774", name: "台灯", model: "yeelink.light.lamp1",
+                         mac: "", tokenHex: nil, tokenSource: "", isCuktech: false, isOnline: false),
+            ]
+            selectedDID = "672601331"
+            nearby = [
+                BleFoundDevice(mac: [0x3C, 0xCD, 0x73, 0x27, 0x61, 0xA0], name: "njcuk.fitting.ad1204",
+                               rssi: -42, productId: 0x660E),
+            ]
+        case "done":
+            step = .done
+            status = "配好了，剩下的交给菜单栏"
+            doneText = "配置存到 \(AppSettings.fileURL.path)"
+        default:
+            step = .welcome
+            status = "第一次用，先认一下这台充电器"
+        }
+    }
+
+    /// 画一张「假二维码」占位（三个定位角 + 伪随机点），只为让截图里有一张码。
+    static func demoQRCode() -> NSImage {
+        let n = 25
+        let cell = 8
+        let size = n * cell
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.white.setFill()
+        NSRect(x: 0, y: 0, width: size, height: size).fill()
+        NSColor.black.setFill()
+        var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+        for y in 0..<n {
+            for x in 0..<n {
+                let inFinder = (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8)
+                if inFinder { continue }
+                seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                if (seed >> 33) % 3 == 0 {
+                    NSRect(x: x * cell, y: y * cell, width: cell, height: cell).fill()
+                }
+            }
+        }
+        for (fx, fy) in [(0, 0), (n - 7, 0), (0, n - 7)] {
+            NSRect(x: fx * cell, y: fy * cell, width: 7 * cell, height: 7 * cell).fill()
+            NSColor.white.setFill()
+            NSRect(x: (fx + 1) * cell, y: (fy + 1) * cell, width: 5 * cell, height: 5 * cell).fill()
+            NSColor.black.setFill()
+            NSRect(x: (fx + 2) * cell, y: (fy + 2) * cell, width: 3 * cell, height: 3 * cell).fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        let img = NSImage(size: NSSize(width: size, height: size))
+        img.addRepresentation(rep)
+        return img
+    }
+
     // MARK: - 内部
 
     private func finish(mac: String, token: String) {
@@ -241,7 +315,7 @@ struct WizardView: View {
 
     // 第一屏
     private var welcome: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("充电器的数据只有小米云和它自己知道：蓝牙那头要一个 12 字节的 token 才算登录，而这个 token 只能从你自己账号的设备清单里取。所以第一次要走一遍扫码。")
                 .font(.system(size: 11))
                 .foregroundColor(Theme.dim)
@@ -251,10 +325,43 @@ struct WizardView: View {
             stepRow("2", "挑出这台充电器", "带「酷态科」的排最前；挑完记下它的蓝牙 MAC 和 token。")
             stepRow("3", "以后不用再扫", "配好就常驻菜单栏，重连、读数、开关都自动。")
 
+            previewCard
+
             if model.showManual {
                 manualForm
             }
         }
+    }
+
+    /// 第一屏底部那张示意图：配好之后菜单栏长什么样。纯 SwiftUI 画的，不是截图。
+    private var previewCard: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7).fill(Theme.ok.opacity(0.16))
+                    .frame(width: 28, height: 28)
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.ok)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("配好之后")
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.dim)
+                Text("菜单栏右上角直接显示总功率，点开是四路读数与开关")
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.fg)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Text("32.2 W")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.ok)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.black.opacity(0.28)))
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.card))
     }
 
     private func stepRow(_ index: String, _ title: String, _ text: String) -> some View {
@@ -502,15 +609,16 @@ final class WizardController {
     private var model: WizardModel?
 
     /// 打开向导。已经有窗口就顶到前面，不重复开。
-    static func show(settings: AppSettings, onDone: ((AppSettings) -> Void)? = nil) {
-        shared.present(settings: settings, onDone: onDone)
+    static func show(settings: AppSettings, demo: String? = nil,
+                     onDone: ((AppSettings) -> Void)? = nil) {
+        shared.present(settings: settings, demo: demo, onDone: onDone)
     }
 
     static func closeAll() {
         shared.window?.orderOut(nil)
     }
 
-    private func present(settings: AppSettings, onDone: ((AppSettings) -> Void)?) {
+    private func present(settings: AppSettings, demo: String?, onDone: ((AppSettings) -> Void)?) {
         if let win = window, win.isVisible {
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -518,6 +626,7 @@ final class WizardController {
         }
 
         let m = WizardModel(settings: settings)
+        if let demo { m.loadDemo(demo) }
         m.onDone = onDone
         m.onClose = { [weak self] in self?.window?.orderOut(nil) }
         model = m
