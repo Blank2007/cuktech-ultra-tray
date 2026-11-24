@@ -83,7 +83,9 @@ item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp]) // 左键弹面板，
 
 顺带实测到一件对 Swift 实现很关键的事：**tag 长度只影响 tag，不影响密文**（同一组 key/nonce 下 4/8/16 字节 tag 的密文都是 `14841c2d…`，tag 分别是 `7bd0e208` / `7c44ff1594e68d57` / `050c7348cfc516bb…`）。CCM 的 `B0` 里编码了 t，所以手写实现里「t 参与第一块 MAC」这一步不能省——这是最容易写错的地方，现在有向量盯着。
 
-**L2 的价值比预想大**：runner 上是完整的 macOS（有 WindowServer，Xcode 的 UI 测试都能跑；arm64 runner 只有 3 核 M1 + 7 GB，4,400 行 Swift 干净编译约 2–3 分钟，够用），所以我可以让程序在 CI 里真的启动、用 `screencapture -x` 抓真屏 PNG、当作 artifact 传回来——**我能亲眼看到菜单栏数字和面板渲染成什么样**，不用摸 Mac。这一步能不能成，M0 就会验证，翻车也不亏（大不了退回到离屏渲染 `NSHostingView` 导出 PNG）。
+**L2 的价值比预想大**：runner 上是完整的 macOS（有 WindowServer，Xcode 的 UI 测试都能跑；arm64 runner 只有 3 核 M1 + 7 GB，4,400 行 Swift 干净编译约 2–3 分钟，够用），所以我可以让程序在 CI 里真的启动、用 `screencapture -x` 抓真屏 PNG、当作 artifact 传回来——**我能亲眼看到菜单栏数字和面板渲染成什么样**，不用摸 Mac。
+
+**M0 已验证成立**（2026-11-24）：`open` 起得来、`screencapture -x` 出图 81 KB，菜单栏上真的出现了 `0.0 W`。截图见 §5 末尾。
 
 **L3 的缺口要诚实说**：蓝牙链路（认证时序、分包、通知顺序、重连退避）只能真机验。缓解两条：
 
@@ -170,14 +172,36 @@ release:        runs-on: macos-26, if: startsWith(github.ref, 'refs/tags/mac-') 
 
 | 步 | 内容 | 我能拿给你看的证据 | 估时 |
 | --- | --- | --- | --- |
-| **M0** | CI 骨架 + 一个只有菜单栏数字的 Hello 程序 | CI 跑绿、.app artifact、**菜单栏真屏截图** | 0.5 天 |
+| **M0** ✅ | CI 骨架 + 一个只有菜单栏数字的 Hello 程序 | CI 跑绿、.app artifact、**菜单栏真屏截图** | 已完成 2026-11-24 |
 | **M1** | 协议核心 + 黄金向量 + L1 单测全绿 | 单测报告（每个向量一行 OK） | 1 天 |
 | **M2** | 认证状态机 + 回放测试（真机帧序喂进去） | 回放断言通过（状态 = 已认证，读数 = 真机那组） | 1.5 天 |
 | **M3** | UI：菜单栏数字 + 面板三页 + 右键菜单 | CI 截图（三个页面各一张） | 2 天 |
 | **M4** | 扫码向导四屏 | CI 截图 + 真实扫码录屏（让有 Mac 的人跑一次） | 2 天 |
 | **M5** | 打包、ad-hoc 签名、Release、README 加 Mac 一节 | 能下载的 zip + Release 页 | 1 天 |
 
-合计约 **8 个工作日**。M0 是唯一有「CI 能不能截图」风险的，先做它就是为了尽早暴露。
+合计约 **8 个工作日**。M0 是唯一有「CI 能不能截图」风险的，先做它就是为了尽早暴露——结论是**能**，见下。
+
+### M0 实测结果（2026-11-24，run 45414533125）
+
+| 项 | 实测值 |
+| --- | --- |
+| runner | `macos-26`（arm64）+ `macos-26-intel`（x86_64），两个都绿 |
+| 工具链 | Apple Swift 6.3.3、Xcode 26.6、macOS 26.7.2 |
+| `swift build -c release` | **24.5 秒**（M0 只有一个文件；4,400 行估计 2–3 分钟） |
+| .app 组装 + ad-hoc 签名 | 成功，`codesign --verify` 通过，包体 100 KB |
+| `--selftest` | `[m0] selftest ok version=0.4.5 channel=mac` |
+| `open` 后进程 | 存活（pgrep 抓到 pid），**说明 runner 有可用的 GUI 会话** |
+| `screencapture -x` | **exit=0，出图 81,318 字节**，屏幕 1024×768 |
+| 菜单栏数字 | **真的在系统菜单栏上**（见下） |
+
+![CI 里跑起来后截到的系统菜单栏：左边是 0.0 W，右边是 Spotlight 图标与时钟](mac-m0-menubar.png)
+
+这张图不是离屏渲染、也不是透明窗口——是 `screencapture` 抓的整屏，裁出来的系统菜单栏那一条。`0.0 W` 是 `NSStatusItem` 的 `attributedTitle`，用的 `monospacedDigitSystemFont`，跟时钟、Spotlight 图标同一行同一高度。
+
+两件被这一步证实的事：
+
+1. **「系统级菜单栏文字」这条路通了**：不是自绘浮层，是 AppKit 的状态项，系统负责布局、跟随深浅色、进「菜单栏被占满时自动隐藏」的逻辑。
+2. **L2 视觉验证成立**：CI 能起 App、能截真屏，意味着 M3/M4 的每个界面我都能拿真实截图给你看，不用摸 Mac。
 
 ---
 
@@ -194,7 +218,7 @@ release:        runs-on: macos-26, if: startsWith(github.ref, 'refs/tags/mac-') 
 ## 7. 风险（按严重程度重排）
 
 1. **蓝牙链路没有真机验证（最硬的一条）**。回放测试能覆盖认证与解析，但「CoreBluetooth 在这台机器上能不能连上、通知顺序有没有差异」只能靠有 Mac 的人跑一次。若最终没人测，我能交付的是「编译通过 + 单元测试全绿 + 界面截图」，这点我会在 README 里如实写，不吹。
-2. **无头 CI 能不能截到菜单栏**（中）。M0 就会试；不成的退路是离屏渲染 SwiftUI 导出 PNG（拿不到真菜单栏，但能看面板）。
+2. ~~**无头 CI 能不能截到菜单栏**~~（**已消除**，M0 实测能：`screencapture -x` exit=0，菜单栏数字清晰可见，见 §5 末尾那张图）。
 3. **分发这一环最容易「看着成功其实用不了」**（中）。ad-hoc 未公证 + artifact zip 丢可执行位，两个坑叠起来就是「CI 全绿、下载打不开」。对策已写进 §2 的三个坑：tar 传内部产物、`zip -ry` 发 Release、README 写清 Gatekeeper 那一关怎么过。
 4. **小米云接口变动 / 风控**（中）。扫码登录走的是官方 App 同一条路，风险在于参数与签名细节；已有 C# 版可对照，出问题能二分。
 5. **AES-CCM 手写错一位就全错**（低）。有黄金向量兜底，CI 会第一时间红。
@@ -202,10 +226,11 @@ release:        runs-on: macos-26, if: startsWith(github.ref, 'refs/tags/mac-') 
 
 ---
 
-## 8. 需要你点头的三件事
+## 8. 已拍板的四件事（2026-11-24）
 
-1. **开工范围**：按 M0→M5 一路做完（约 8 天），还是先做到 M0+M1+M3（能看界面、能连协议但还连不上设备，约 3.5 天）？
-2. **99 美元的开发者账号**：办还是先不办？（不办就走 ad-hoc，用户装的时候要多点两下系统设置）
-3. **放哪个仓库**：放现在的 `cuktech-ultra-tray` 的 `mac/` 目录 + 独立 workflow（我倾向这个，一份 README 讲两个平台），还是另开一个仓库？
+1. **范围**：M0→M5 一路做完，不切半成品。
+2. **开发者账号**：不办。走 ad-hoc 签名，用户在「系统设置 → 隐私与安全性 → 仍要打开」多点两下。
+3. **放在哪**：当前仓库的 `mac/` 目录 + 独立 workflow，一份 README 讲两个平台。
+4. **版本号与文件名**：**Mac 版跟 Windows 版共用同一个版本号**（0.4.5 → 0.4.6 → …），产物文件名用平台后缀区分——`CuktechTray-<版本>-win.exe`、`CuktechTray-<版本>-mac.zip`。
 
-版本号我按「Mac 版自己从 0.1.0 起」规划，跟 Windows 的 0.4.x 不混——两套实现，各有各的 bug 历史。
+第 4 条有个连带改动要记住：Windows 版的自更新（`src/CuktechTrayAot/UpdateCheck.cs` 里挑 Release 资产的逻辑）只认 `CuktechTray-<版本>.exe` 这个名字，资产一改名 `-win` 就挑不到，必须同步放宽匹配规则。这条在 M5 发版前一起处理。

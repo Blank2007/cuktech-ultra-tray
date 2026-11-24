@@ -6,20 +6,29 @@ import PackageDescription
 //
 // 分层：
 //   CuktechCore  —— 纯逻辑（加密、帧、认证状态机、扫码登录），不 import AppKit/CoreBluetooth，
-//                   所以在 Linux runner 上也能 swift test。
+//                   所以 Linux runner 上也能 swift test（免费的 ubuntu job 就是干这个的）。
 //   CuktechBle   —— CoreBluetooth 适配层，把 CBPeripheral 包成 CuktechCore 需要的 transport。
 //   CuktechTray  —— 可执行 target：NSStatusItem + SwiftUI 面板 + 向导。
+//
+// 注意：CuktechBle / CuktechTray 只在 macOS 上声明。否则 ubuntu job 里 `swift test`
+// 会连可执行 target 一起编译，然后在 `import AppKit` 上炸掉（Linux 没有 AppKit）。
+var products: [Product] = [
+    .library(name: "CuktechCore", targets: ["CuktechCore"]),
+]
+var targets: [Target] = [
+    .target(name: "CuktechCore", path: "Sources/CuktechCore"),
+    .testTarget(name: "CuktechCoreTests", dependencies: ["CuktechCore"], path: "Tests/CuktechCoreTests"),
+]
+
+#if os(macOS)
+products.append(.executable(name: "CuktechTray", targets: ["CuktechTray"]))
+targets.append(.target(name: "CuktechBle", dependencies: ["CuktechCore"], path: "Sources/CuktechBle"))
+targets.append(.executableTarget(name: "CuktechTray", dependencies: ["CuktechCore", "CuktechBle"], path: "Sources/CuktechTray"))
+#endif
+
 let package = Package(
     name: "CuktechTrayMac",
     platforms: [.macOS(.v13)],
-    products: [
-        .executable(name: "CuktechTray", targets: ["CuktechTray"]),
-        .library(name: "CuktechCore", targets: ["CuktechCore"]),
-    ],
-    targets: [
-        .target(name: "CuktechCore", path: "Sources/CuktechCore"),
-        .target(name: "CuktechBle", dependencies: ["CuktechCore"], path: "Sources/CuktechBle"),
-        .executableTarget(name: "CuktechTray", dependencies: ["CuktechCore", "CuktechBle"], path: "Sources/CuktechTray"),
-        .testTarget(name: "CuktechCoreTests", dependencies: ["CuktechCore"], path: "Tests/CuktechCoreTests"),
-    ]
+    products: products,
+    targets: targets
 )
