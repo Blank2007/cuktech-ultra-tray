@@ -123,6 +123,9 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
    **同一版本号下 Windows 与 macOS 各出一份产物，文件名用 `-win` / `-mac` 区分**。
    自动更新仍然认得这个名字：`UpdateCheck.PickAsset` 只要求以 `CuktechTray-` 开头、以 `.exe` 结尾、不含 `Setup`，
    `-win` 不影响匹配，`.zip`（mac 那份）也不会被误选——**不需要改这段代码**。
+   **macOS 版的版本号自成一套**（用户 2026-11-25 定）：`mac/Sources/CuktechCore/BuildInfo.swift` 的 `version` 是唯一来源，
+   从 **0.1.0** 起自己算，不跟 Windows 的 0.4.x 绑。Release 里 mac 产物名跟着它走（例如 Windows 0.4.6 配 `CuktechTray-0.1.0-mac.zip`），
+   所以 tag 是 `v0.4.6` 而 zip 名带 0.1.0，这是正常的。
 7. 提交并推送 commit（主题行「<版本>: 一句话」，正文列改动），然后 `git tag -a v<版本> -m "<版本>: <一句话>"` 并推 tag。
    git 在 `D:\dsh projects\.tools\git\cmd\git.exe`（不在 PATH）；push 要带 `-c http.extraheader=AUTHORIZATION: basic <base64(x-access-token:token)>`，
    token 在 `D:\dsh projects\.secrets\github-token.txt`（在仓库目录之外，绝不进仓库）。
