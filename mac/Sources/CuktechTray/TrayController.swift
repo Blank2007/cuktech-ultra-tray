@@ -17,6 +17,9 @@ final class TrayController: NSObject {
     private var ticker: Task<Void, Never>?
     private var statusLineItem: NSMenuItem!
     private var wattsItem: NSMenuItem!
+    /// 右键菜单。左键不弹它——左键直接开面板（README 一直是这么写的，
+    /// 之前把 menu 挂死在 statusItem 上，结果左键点出来的是菜单，面板反而要再点一次）。
+    private let statusMenu = NSMenu()
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -24,6 +27,7 @@ final class TrayController: NSObject {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         buildMenu()
+        wireStatusItemButton()
         wirePanel()
         updateTitle()
     }
@@ -122,7 +126,7 @@ final class TrayController: NSObject {
     // MARK: - 菜单
 
     private func buildMenu() {
-        let menu = NSMenu()
+        let menu = statusMenu
         menu.autoenablesItems = false
 
         statusLineItem = NSMenuItem(title: "正在启动…", action: nil, keyEquivalent: "")
@@ -145,7 +149,28 @@ final class TrayController: NSObject {
         menu.addItem(.separator())
         menu.addItem(item("退出", #selector(quit)))
 
-        statusItem.menu = menu
+    }
+
+    /// 左键开面板、右键弹菜单。不设 `statusItem.menu`，否则左键永远只有菜单。
+    private func wireStatusItemButton() {
+        guard let button = statusItem.button else { return }
+        button.target = self
+        button.action = #selector(statusItemClicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let isSecondary = event?.type == .rightMouseUp
+            || (event?.modifierFlags.contains(.control) ?? false)
+        if isSecondary {
+            // 临时挂上菜单再点一次，让 AppKit 把它弹在正确位置；弹完立刻摘掉
+            statusItem.menu = statusMenu
+            statusItem.button?.performClick(nil)
+            statusItem.menu = nil
+        } else {
+            panel.toggle(relativeTo: statusItem.button)
+        }
     }
 
     private func item(_ title: String, _ action: Selector) -> NSMenuItem {

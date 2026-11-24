@@ -24,6 +24,26 @@ cp "$BIN" "$APP/Contents/MacOS/CuktechTray"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 chmod +x "$APP/Contents/MacOS/CuktechTray"
 
+# 图标：源码里没有 .icns（二进制不适合进 git），构建时按需画一套 iconset 再打包。
+# 生成失败不致命——只是 Finder 里显示成通用图标，比构建直接挂掉好。
+echo "== 图标 =="
+mkdir -p "$ROOT/.build"
+ICONSET="$ROOT/.build/AppIcon.iconset"
+if [ ! -d "$ICONSET" ]; then
+  if xcrun -sdk macosx swiftc -O "$ROOT/scripts/make-icon.swift" -o "$ROOT/.build/make-icon" 2>/dev/null; then
+    "$ROOT/.build/make-icon" "$ICONSET"
+  fi
+fi
+if [ -d "$ICONSET" ]; then
+  if xcrun iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null; then
+    echo "   AppIcon.icns 已放入 Resources"
+  else
+    echo "   iconutil 打包失败，跳过图标" >&2
+  fi
+else
+  echo "   没生成出 iconset，跳过图标" >&2
+fi
+
 # 版本号写进 Info.plist，跟 Windows 版共用同一个版本号
 VER="$("$APP/Contents/MacOS/CuktechTray" --version 2>/dev/null || echo "")"
 if [ -n "$VER" ]; then
