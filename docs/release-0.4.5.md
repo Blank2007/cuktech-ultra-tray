@@ -43,29 +43,37 @@
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `CuktechTray-0.4.5.exe` | **10,879,488 字节（10.38 MiB）** | 绿色版 + 安装器二合一，Release 里就放这一个；比 0.4.4 的 10,874,880 字节多 4,608 字节（只多了 `--render-icons` / `--render-taskbar` 这类自查开关） |
+| `CuktechTray-0.4.5-win.exe` | **10,879,488 字节（10.38 MiB）** | Windows：绿色版 + 安装器二合一；比 0.4.4 的 10,874,880 字节多 4,608 字节（只多了 `--render-icons` / `--render-taskbar` 这类自查开关） |
+| `CuktechTray-0.4.5-mac.zip` | **893,883 字节（873 KiB）** | macOS 13+：解压出 `CuktechTray.app`（universal，Intel / Apple Silicon 都能跑，ad-hoc 签名），说明见 [mac/README.md](../mac/README.md) |
 
 ## 校验
 
 ```
-文件   CuktechTray.exe          （本地叫这个名，Release 资产叫 CuktechTray-0.4.5.exe，同一个文件）
+文件   CuktechTray-0.4.5-win.exe   （本地 build 出来叫 CuktechTray.exe，同一个文件）
 大小   10,879,488 字节
 SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
+
+文件   CuktechTray-0.4.5-mac.zip   （CI 在 macos-26-intel 上编的 universal 包）
+大小   893,883 字节
+SHA256 6BF27966376B4810CA3917912A165BF5294463E66DDE8D0F45F912E4C5C5771A
 ```
 
-纯 Windows 用 `Get-FileHash .\CuktechTray.exe -Algorithm SHA256` 对着看；GitHub 的资产页也会直接显示 digest。
+Windows 用 `Get-FileHash .\CuktechTray-0.4.5-win.exe -Algorithm SHA256`、macOS 用
+`shasum -a 256 CuktechTray-0.4.5-mac.zip` 对着看；GitHub 的资产页也会直接显示 digest。
 
 ## 系统要求
 
-* Windows 10 2004（内部版本 19041）及以上，x64
-* 不需要装 .NET 运行时：NativeAOT 单文件，目标机什么都不用配
+* Windows 10 2004（内部版本 19041）及以上，x64；或 macOS 13 及以上（Intel / Apple Silicon 通用）
+* Windows 端不需要装 .NET 运行时：NativeAOT 单文件，目标机什么都不用配；macOS 端不需要装任何运行时
 * 硬件还是「酷态科 10 号 Ultra」充电器 + 蓝牙（BLE），认证成功后的运行期只走蓝牙
 
 ## 已知
 
 * 这个 exe **没有代码签名**，首次运行会弹蓝色的「Windows 已保护你的电脑」，
   点「更多信息 → 仍要运行」即可；之后不会再问
-* 自动更新只认名字形如 `CuktechTray-<版本>.exe` 的发布资产（含 `Setup` 的会被跳过），
-  所以 `dist\CuktechTray-0.4.5.exe` 是照这个名字另存的一份，传 Release 资产请用它，别传 `CuktechTray.exe`
+* 自动更新只认名字以 `CuktechTray-` 开头、以 `.exe` 结尾、且不含 `Setup` 的发布资产，
+  所以 `-win.exe` 天然符合、`-mac.zip` 不会被 Windows 端误选
+* macOS 包**没有公证**（没有 Apple 开发者账号，只有 ad-hoc 签名），第一次打开要右键 → 打开，
+  或者去「系统设置 → 隐私与安全性」点「仍要打开」，细节见 [mac/README.md](../mac/README.md)
 * `--render` / `--render-icons` / `--render-taskbar` / `--font-probe` / `--update-selftest` 这些是开发自查用的开关，
   正常使用不用管；`--apply-update` 别手敲（它会把指到的 exe 换成载荷）

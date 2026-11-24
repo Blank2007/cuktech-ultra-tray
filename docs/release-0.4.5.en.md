@@ -49,29 +49,37 @@ digits are rendered with the runtime font and colour rules and composited over a
 
 | File | Size | Notes |
 | --- | --- | --- |
-| `CuktechTray-0.4.5.exe` | **10,879,488 bytes (10.38 MiB)** | Portable build and installer in one file — the only asset in the release; 4,608 bytes more than 0.4.4 purely from the self-check switches |
+| `CuktechTray-0.4.5-win.exe` | **10,879,488 bytes (10.38 MiB)** | Windows: portable build and installer in one file; 4,608 bytes more than 0.4.4 purely from the self-check switches |
+| `CuktechTray-0.4.5-mac.zip` | **893,883 bytes (873 KiB)** | macOS 13+: unpacks to `CuktechTray.app` (universal, Intel and Apple Silicon, ad-hoc signed), see [mac/README.md](../mac/README.md) |
 
 ## Checksums
 
 ```
-file   CuktechTray-0.4.5.exe    (the local copy is called CuktechTray.exe; same bytes, same hash)
+file   CuktechTray-0.4.5-win.exe   (a local build produces CuktechTray.exe; same bytes, same hash)
 size   10,879,488 bytes
 SHA256 7A14EFE8E71B9BB2696D00ECFAD4418B526F428D0675E7DAC508229B4A310EEA
+
+file   CuktechTray-0.4.5-mac.zip   (universal build produced on a macos-26-intel CI runner)
+size   893,883 bytes
+SHA256 6BF27966376B4810CA3917912A165BF5294463E66DDE8D0F45F912E4C5C5771A
 ```
 
-On plain Windows use `Get-FileHash .\CuktechTray.exe -Algorithm SHA256`; GitHub also shows the digest on the asset page.
+On Windows use `Get-FileHash .\CuktechTray-0.4.5-win.exe -Algorithm SHA256`, on macOS
+`shasum -a 256 CuktechTray-0.4.5-mac.zip`; GitHub also shows the digest on each asset page.
 
 ## Requirements
 
-* Windows 10 2004 (build 19041) or newer, x64
-* No .NET runtime needed: NativeAOT single file
+* Windows 10 2004 (build 19041) or newer, x64; or macOS 13 or newer (universal Intel / Apple Silicon)
+* No .NET runtime needed on Windows (NativeAOT single file); no runtime needed on macOS either
 * A CUKTECH 10 GaN Charger Ultra over BLE; after authentication only Bluetooth is used
 
 ## Known
 
 * The exe is **not code-signed**, so the first run shows the blue "Windows protected your PC" box — click "More info →
   Run anyway"; it will not ask again
-* Auto-update only accepts assets named `CuktechTray-<version>.exe` (anything with `Setup` is skipped), which is why
-  `dist\CuktechTray-0.4.5.exe` exists — use it for the release asset rather than `CuktechTray.exe`
+* Auto-update only accepts assets whose name starts with `CuktechTray-`, ends with `.exe` and does not contain
+  `Setup` — so `-win.exe` matches by construction and the macOS `-mac.zip` is never picked by the Windows updater
+* The macOS bundle is **not notarised** (no Apple Developer account, ad-hoc signature only): open it with
+  right-click → Open, or use System Settings → Privacy & Security → "Open Anyway"; see [mac/README.md](../mac/README.md)
 * `--render`, `--render-icons`, `--render-taskbar`, `--font-probe`, `--update-selftest` are developer self-check switches;
   do not hand-run `--apply-update` (it swaps the exe it is pointed at)

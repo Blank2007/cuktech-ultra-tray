@@ -28,6 +28,8 @@
 > 系统级、不是自绘浮层），纯 Swift 写的 .app 约 1 MB。功能对齐：菜单栏总功率、点开四路读数与开关、
 > 扫码配对向导。与自己这台充电器通信的部分完全独立于界面，协议层在 Linux 上都能跑单测。
 
+![macOS 配对向导](docs/mac-wizard.png)
+
 ---
 
 > ### 🤖 这个仓库的代码是 AI 写的
@@ -57,9 +59,10 @@
 | 🧹 **干净** | 不装驱动、不装运行库、不开后台服务；配置就是一个 JSON，日志会自己轮转 |
 
 > **想直接拿现成的？**
-> * ⬇️ **[最新版本](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)**：`CuktechTray-<版本>.exe`，10.4 MB
+> * Windows：**[最新版本](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** 里的 `CuktechTray-<版本>-win.exe`，10.4 MB
+> * macOS：同一个 Release 里的 `CuktechTray-<版本>-mac.zip`，约 0.9 MB（解压出 .app，universal，Intel 和 Apple Silicon 都能跑）
 >
-> 就这一个文件，没有第二个安装包——它既是绿色版也是安装包。本仓库只放源码，exe 不进仓库，请到
+> Windows 就这一个文件，没有第二个安装包——它既是绿色版也是安装包。本仓库只放源码，产物不进仓库，请到
 > [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) 页面下载。
 > 它**没有代码签名**，第一次运行时 Windows 可能弹「已保护你的电脑」蓝框，点 **更多信息 → 仍要运行** 即可。
 
@@ -72,7 +75,7 @@
 
 ## 〇、安装
 
-下载只有一个文件：`CuktechTray-<版本>.exe`（10.4 MB，目标机不用装 .NET）。没有第二个安装包——
+下载只有一个文件：`CuktechTray-<版本>-win.exe`（10.4 MB，目标机不用装 .NET）。没有第二个安装包——
 **这一个 exe 既是绿色版，也是安装程序，还能自己给自己升级**。
 
 **想免安装**：拷到任意可写目录，双击就用；配置和日志写在 exe 旁边。

@@ -52,7 +52,8 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * ⬇️ **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** (file name looks like `CuktechTray-<version>.exe`, 10.4 MB) — that single file is all you need
+> * Windows: `CuktechTray-<version>-win.exe` from the **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** — 10.4 MB, that single file is all you need
+> * macOS: `CuktechTray-<version>-mac.zip` from the same release — about 0.9 MB, unpack to a .app (universal, runs on Intel and Apple Silicon)
 >
 > This repo holds source only; the exe is not checked in, so please download it from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > It is **not code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.

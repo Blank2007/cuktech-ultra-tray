@@ -48,7 +48,10 @@ xattr -dr com.apple.quarantine /Applications/CuktechTray.app
 
 ## 第一次用：扫一次码
 
-菜单栏出现 `未配对` 时会自动弹向导：
+菜单栏出现 `未配对` 时会自动弹向导，四屏长这样（这是 CI 在真 macOS 上截的）：
+
+![配对向导四屏：认路 / 扫码 / 挑设备 / 完成](../docs/mac-wizard.png)
+
 
 1. **认路** —— 说明为什么要扫码：充电器的 token 只在你自己小米账号的设备清单里；
 2. **扫码** —— 用「米家」App 扫码登录（只读设备清单，token 存在本机）；
@@ -75,7 +78,7 @@ FE95 广播，用广播里反解出来的地址补上。实在不行还有「手
 ```bash
 /Applications/CuktechTray.app/Contents/MacOS/CuktechTray --version     # 打印版本号
 /Applications/CuktechTray.app/Contents/MacOS/CuktechTray --selftest    # 自检：配置路径、是否已配对
-/Applications/CuktechTray.app/Contents/MacOS/CuktechTray --wizard-demo # 只把配对向导第一屏摆出来（截图用）
+/Applications/CuktechTray.app/Contents/MacOS/CuktechTray --wizard-demo=<屏>  # 只摆出向导某一屏（welcome|login|pick|done），截图用
 ```
 
 ---
@@ -85,11 +88,18 @@ FE95 广播，用广播里反解出来的地址补上。实在不行还有「手
 需要 Xcode 命令行工具（或者完整 Xcode）：
 
 ```bash
-swift build -c release --package-path mac          # 编出 mac/.build/release/CuktechTray
+# 在 Intel 或 Apple Silicon 的任意一台 Mac 上都能出 universal（arm64 + x86_64）：
+bash mac/scripts/build-universal.sh mac            # 编出 mac/.build/release/CuktechTray（fat）
 bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist   # 组装 .app + ad-hoc 签名
+bash mac/scripts/package.sh dist                   # 打成 dist/CuktechTray-<版本>-mac.zip
 dist/CuktechTray.app/Contents/MacOS/CuktechTray --selftest
 open dist/CuktechTray.app
 ```
+
+只想编本机架构的话直接 `swift build -c release --package-path mac` 也行。
+（`build-universal.sh` 存在的理由：GitHub 的 arm64 runner 排队经常被取消，所以 CI 固定用
+Intel runner 编两个架构——SwiftPM 多 `--arch` 的产物落在 `.build/apple/Products/Release/`，
+脚本负责把它挪回 `.build/release/`。）
 
 跑测试：
 
@@ -111,7 +121,9 @@ mac/
   Sources/CuktechBle/          CoreBluetooth：连接、认证、扫描
   Sources/CuktechTray/         菜单栏 App：状态栏、面板、向导
   Tests/CuktechCoreTests/      单元测试（黄金向量、协议、云端解析）
+  scripts/build-universal.sh   在单台机器上编 universal（arm64 + x86_64）
   scripts/make-app.sh          组装 .app 并签名
+  scripts/package.sh           打成 CuktechTray-<版本>-mac.zip
   Resources/Info.plist         包信息（LSUIElement、蓝牙权限说明）
 ```
 
