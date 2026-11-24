@@ -9,6 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6.svg" alt="Platform: Windows 10 / 11">
+  <img src="https://img.shields.io/badge/Platform-macOS%2013%2B-000000.svg" alt="Platform: macOS 13+">
   <img src="https://img.shields.io/badge/.NET-8-512BD4.svg" alt=".NET 8">
   <a href="https://github.com/Blank2007/cuktech-ultra-tray/releases/latest"><img src="https://img.shields.io/github/v/release/Blank2007/cuktech-ultra-tray" alt="最新版本"></a>
 </p>
@@ -22,6 +23,10 @@
 * **只有一个 exe**（10.4 MB，目标机不用装 .NET）：拷走双击就是绿色版，点一下「安装到本机」它自己装自己
 * 装好之后**升级也不用再下安装包**：右键「检查更新」自己下载、校验 SHA256、替换正在运行的自己，几秒后自动回来
 * 常驻内存几十 MB，托盘待着不弹窗、不占桌面
+
+> 🍎 **macOS 版在 [`mac/`](mac/README.md)**：同一套协议、同一套取色规则，位置换成菜单栏文字（`NSStatusItem`，
+> 系统级、不是自绘浮层），纯 Swift 写的 .app 约 1 MB。功能对齐：菜单栏总功率、点开四路读数与开关、
+> 扫码配对向导。与自己这台充电器通信的部分完全独立于界面，协议层在 Linux 上都能跑单测。
 
 ---
 

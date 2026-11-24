@@ -17,6 +17,11 @@
 - README 里写死的下载文件名与体积（`CuktechTray-0.4.0.exe` / 9.19 MB）改掉，换成 `CuktechTray-<版本>.exe` / 10.4 MB，免得每发一版就过时一次
 - 版本号 0.4.4 → 0.4.5；**功能与界面无变化**，从 0.4.4 升上来不会看到任何不同
 
+### macOS 版（与 Windows 共用同一个版本号）
+
+同一个 tag 下的另一份产物 `CuktechTray-0.4.5-mac.zip`，纯 Swift 写的菜单栏 App，说明见 [mac/README.md](mac/README.md)。
+Windows 版的自动更新只认 `.exe`、会跳过这份 `.zip`，两者互不影响。
+
 ## 0.4.4 — 2026-11-23
 
 顶栏那个「已连接」胶囊把底色去掉，点和字都留着；顺带把顶栏上下拉开。

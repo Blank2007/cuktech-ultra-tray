@@ -72,12 +72,36 @@ jobs:
           pkill -f CuktechTray
           true
       - name: pack
-        run: tar -czf dist/CuktechTray-0.4.5-mac-${{ matrix.runner }}.tar.gz -C dist CuktechTray.app
+        run: bash mac/scripts/package.sh dist
       - uses: actions/upload-artifact@v4
         with:
           name: wizard-${{ matrix.runner }}
           path: |
-            dist/*.tar.gz
+            dist/*.zip
             shot.png
             wizard.png
           if-no-files-found: warn
+
+  # tag（与 Windows 同版本号，例如 v0.4.5）时把 .app 打成 zip 传到 Release。
+  # 同一份 Release 里 Windows 那个 job 会传 CuktechTray-<版本>-win.exe，这里传 -mac.zip。
+  release-asset:
+    name: release asset (mac zip)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-macos
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: swift build -c release --package-path mac
+      - name: make app
+        run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
+      - name: selftest
+        run: dist/CuktechTray.app/Contents/MacOS/CuktechTray --selftest
+      - name: package zip
+        run: bash mac/scripts/package.sh dist
+      - name: upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/CuktechTray-*-mac.zip --clobber

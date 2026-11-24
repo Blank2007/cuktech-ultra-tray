@@ -176,8 +176,8 @@ release:        runs-on: macos-26, if: startsWith(github.ref, 'refs/tags/mac-') 
 | **M1** | 协议核心 + 黄金向量 + L1 单测全绿 | 单测报告（每个向量一行 OK） | 1 天 |
 | **M2** | 认证状态机 + 回放测试（真机帧序喂进去） | 回放断言通过（状态 = 已认证，读数 = 真机那组） | 1.5 天 |
 | **M3** | UI：菜单栏数字 + 面板三页 + 右键菜单 | CI 截图（三个页面各一张） | 2 天 |
-| **M4** | 扫码向导四屏 | CI 截图 + 真实扫码录屏（让有 Mac 的人跑一次） | 2 天 |
-| **M5** | 打包、ad-hoc 签名、Release、README 加 Mac 一节 | 能下载的 zip + Release 页 | 1 天 |
+| **M4** ✅ | 小米云客户端：QR 登录、设备清单、token 拉取 + 单元测试（实际拆分为「先做云端，再做界面」） | CI 单测全绿、两端都能编过 | 已完成 2026-11-24 |
+| **M5** | 扫码向导四屏 + 配对写入配置 + 打包、ad-hoc 签名、Release | CI 截图（向导四屏）+ 能下载的 zip | 1 天 |
 
 合计约 **8 个工作日**。M0 是唯一有「CI 能不能截图」风险的，先做它就是为了尽早暴露——结论是**能**，见下。
 
@@ -233,4 +233,6 @@ release:        runs-on: macos-26, if: startsWith(github.ref, 'refs/tags/mac-') 
 3. **放在哪**：当前仓库的 `mac/` 目录 + 独立 workflow，一份 README 讲两个平台。
 4. **版本号与文件名**：**Mac 版跟 Windows 版共用同一个版本号**（0.4.5 → 0.4.6 → …），产物文件名用平台后缀区分——`CuktechTray-<版本>-win.exe`、`CuktechTray-<版本>-mac.zip`。
 
-第 4 条有个连带改动要记住：Windows 版的自更新（`src/CuktechTrayAot/UpdateCheck.cs` 里挑 Release 资产的逻辑）只认 `CuktechTray-<版本>.exe` 这个名字，资产一改名 `-win` 就挑不到，必须同步放宽匹配规则。这条在 M5 发版前一起处理。
+第 4 条**已核实不用改代码**：Windows 版挑 Release 资产的是 `src/CuktechTray/UpdateCheck.cs:103` 的 `PickAsset`（AOT 工程用 `src/CuktechTrayAot/CuktechTrayAot.csproj:42` 的 `<Compile Include="..\CuktechTray\UpdateCheck.cs" Link="Shared\UpdateCheck.cs" />` 直接复用同一个文件），判据只有三条：名字以 `CuktechTray-` 开头、以 `.exe` 结尾、不含 `Setup`。所以 `CuktechTray-0.4.5-win.exe` 天生就能被认出来；mac 那份是 `.zip`，也不会被误选。发版时不用动这段逻辑。
+
+另外，Mac 版自己**不**做自更新：一个 ad-hoc 签名的 .app 换掉自己比 Windows 麻烦得多（要重新走一遍「隐私与安全性 → 仍要打开」），第一版就让用户手动覆盖。

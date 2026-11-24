@@ -119,18 +119,25 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
 4. 取真实值：`(Get-Item dist\CuktechTray.exe).Length` 与 `Get-FileHash -Algorithm SHA256`，Release 正文里的字节数和哈希必须是实测的。
 5. 写两处文档：`CHANGELOG.md` / `CHANGELOG.en.md` 顶部加一节；`docs/release-<版本>.md` 与 `docs/release-<版本>.en.md` 写 Release 正文草稿
    （结构：一句话 / 这次改了什么按版本倒序 / 怎么升级 / 文件 / 校验 / 系统要求 / 已知）。
-6. 把 `dist\CuktechTray.exe` 另存一份 `dist\CuktechTray-<版本>.exe`——自动更新只认这个名字（`UpdateCheck.PickAsset`，含 `Setup` 的会被跳过）。
+6. 把 `dist\CuktechTray.exe` 另存一份 `dist\CuktechTray-<版本>-win.exe`。用户 2026-11-24 定的规矩：
+   **同一版本号下 Windows 与 macOS 各出一份产物，文件名用 `-win` / `-mac` 区分**。
+   自动更新仍然认得这个名字：`UpdateCheck.PickAsset` 只要求以 `CuktechTray-` 开头、以 `.exe` 结尾、不含 `Setup`，
+   `-win` 不影响匹配，`.zip`（mac 那份）也不会被误选——**不需要改这段代码**。
 7. 提交并推送 commit（主题行「<版本>: 一句话」，正文列改动），然后 `git tag -a v<版本> -m "<版本>: <一句话>"` 并推 tag。
    git 在 `D:\dsh projects\.tools\git\cmd\git.exe`（不在 PATH）；push 要带 `-c http.extraheader=AUTHORIZATION: basic <base64(x-access-token:token)>`，
    token 在 `D:\dsh projects\.secrets\github-token.txt`（在仓库目录之外，绝不进仓库）。
 8. 建 Release：`POST /repos/Blank2007/cuktech-ultra-tray/releases`，`tag_name` 用刚推的 tag，
    `name` 用 release 稿的 H1（去掉 `# `），`body` 用 release 稿但**删掉开头那句「这份是发 GitHub Release 用的正文草稿」引用行**。
-9. 只上传一个资产：`CuktechTray-<版本>.exe`（`POST https://uploads.github.com/…/releases/<id>/assets?name=…`）。
+9. 上传 `CuktechTray-<版本>-win.exe`（`POST https://uploads.github.com/…/releases/<id>/assets?name=…`）。
+   macOS 那份 `CuktechTray-<版本>-mac.zip` **由 CI 自己传**：`.github/workflows/macos.yml` 里 tag 以 `v` 开头的 run
+   会跑 `release-asset` job（`bash mac/scripts/package.sh dist` → `gh release upload <tag> dist/CuktechTray-*-mac.zip --clobber`），
+   所以 tag 要跟 Windows 一起推、版本号保持一致。CI 排队久的话，本地也能跑同样的 `package.sh` 手动传。
 
 不要做的事：
 
-* **不传 zip 包、不传 `SHA256SUMS.txt`**，正文里也不要列这些不存在的文件。用户的判断是「没必要」：
+* **Windows 那份不传 zip 包、不传 `SHA256SUMS.txt`**，正文里也不要列这些不存在的文件。用户的判断是「没必要」：
   zip 只是把仓库里已有的 README/CHANGELOG 再打一遍包（4.8 MB），哈希在正文和资产页都能看。
+  例外是 macOS：`.app` 是目录，必须打成 `zip` 才能下载（`zip -qryX`，`-X` 去掉 `__MACOSX`），这份 zip 是唯一分发形态，要传。
 * **不留 draft Release**。曾经留过一个 `v0.4.0` 草稿，连 tag 都指在 0.3.3 的 commit 上，2026-11-23 已删。
 * 不把 `dist\settings.json`（含真实 MAC 与 token）、`logs\`、`dist\` 提交进仓库；打 tag 前 `git status` 必须是干净的。
 * `--render*` / `--font-probe` 这类自查开关可以随版本发出去，但不要写进「功能」段落当卖点。
