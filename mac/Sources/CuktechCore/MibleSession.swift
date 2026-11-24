@@ -195,19 +195,19 @@ public final class MibleSession: @unchecked Sendable {
         let salt = randKey + devRandom       // app_random || dev_random
         let saltInv = devRandom + randKey    // dev_random || app_random
 
-        let derived = try hkdfSHA256(ikm: token, salt: salt, info: Self.hkdfInfo, outputByteCount: 64)
+        let derived = try MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: Self.hkdfInfo, outputByteCount: 64)
         devKey = Array(derived[0..<16])
         appKey = Array(derived[16..<32])
         devIv = Array(derived[32..<36])
         appIv = Array(derived[36..<40])
 
-        let expectedDevHmac = hmacSHA256(key: devKey, message: saltInv)
+        let expectedDevHmac = MibleCrypto.hmacSHA256(key: devKey, message: saltInv)
         guard constantTimeEquals(expectedDevHmac, devHmac) else {
             throw MibleError.auth("设备 HMAC 校验失败（token 可能不对）")
         }
 
         t("密钥派生+设备 HMAC 校验通过 dev_key=\(devKey.hexString)")
-        let ourHmac = hmacSHA256(key: appKey, message: salt)
+        let ourHmac = MibleCrypto.hmacSHA256(key: appKey, message: salt)
 
         try await link.write(.authData, Self.cmdSendInfo)
         guard let rdy2 = await read(.authData, 3.0), rdy2 == Self.rcvRdy else {

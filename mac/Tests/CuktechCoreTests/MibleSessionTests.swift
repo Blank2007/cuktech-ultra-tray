@@ -42,7 +42,7 @@ final class FakeDeviceLink: MibleLink, @unchecked Sendable {
                 deriveKeys()
                 emit(.authData, [0x00, 0x00, 0x01, 0x00])
                 emit(.authData, [0x00, 0x00, 0x02, 0x01] + devRandom)
-                emit(.authData, [0x00, 0x00, 0x02, 0x01] + hmacSHA256(key: devKey, message: devRandom + randKey))
+                emit(.authData, [0x00, 0x00, 0x02, 0x01] + MibleCrypto.hmacSHA256(key: devKey, message: devRandom + randKey))
             } else if data == [0x00, 0x00, 0x00, 0x0A, 0x01, 0x00] {
                 emit(.authData, [0x00, 0x00, 0x01, 0x01])
             } else if data.count == 34 && data[0] == 0x01 && data[1] == 0x00 {
@@ -70,7 +70,7 @@ final class FakeDeviceLink: MibleLink, @unchecked Sendable {
 
     private func deriveKeys() {
         let salt = randKey + devRandom
-        let derived = try! hkdfSHA256(ikm: token, salt: salt, info: Array("mible-login-info".utf8), outputByteCount: 64)
+        let derived = try! MibleCrypto.hkdfSHA256(ikm: token, salt: salt, info: "mible-login-info", outputByteCount: 64)
         devKey = Array(derived[0..<16])
         appKey = Array(derived[16..<32])
         devIv = Array(derived[32..<36])
