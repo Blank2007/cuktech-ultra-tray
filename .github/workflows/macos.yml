@@ -41,11 +41,7 @@ jobs:
           uname -m
           sw_vers
       - name: build (universal)
-        run: |
-          set -x
-          swift build -c release --package-path mac --arch arm64 --arch x86_64 \
-            || swift build -c release --package-path mac
-          lipo -info mac/.build/release/CuktechTray || true
+        run: bash mac/scripts/build-universal.sh mac
       - name: make app
         run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
       - name: selftest
@@ -99,11 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: build (universal)
-        run: |
-          set -x
-          swift build -c release --package-path mac --arch arm64 --arch x86_64 \
-            || swift build -c release --package-path mac
-          lipo -info mac/.build/release/CuktechTray || true
+        run: bash mac/scripts/build-universal.sh mac
       - name: make app
         run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
       - name: selftest
