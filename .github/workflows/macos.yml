@@ -60,12 +60,24 @@ jobs:
           echo "--- app log ---"
           pkill -f CuktechTray
           true
+      - name: pairing wizard screenshot
+        run: |
+          set +e
+          dist/CuktechTray.app/Contents/MacOS/CuktechTray --wizard-demo &
+          sleep 5
+          pgrep -fl CuktechTray
+          screencapture -x wizard.png
+          echo "wizard screencapture exit=$?"
+          ls -l wizard.png 2>/dev/null
+          pkill -f CuktechTray
+          true
       - name: pack
         run: tar -czf dist/CuktechTray-0.4.5-mac-${{ matrix.runner }}.tar.gz -C dist CuktechTray.app
       - uses: actions/upload-artifact@v4
         with:
-          name: m0-${{ matrix.runner }}
+          name: wizard-${{ matrix.runner }}
           path: |
             dist/*.tar.gz
             shot.png
+            wizard.png
           if-no-files-found: warn

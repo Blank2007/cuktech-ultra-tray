@@ -60,7 +60,7 @@ final class TrayController: NSObject {
     private func bootSession() {
         guard let mac = settings.macBytes, let token = settings.tokenBytes else {
             log.write("[tray] 还没配对：\(AppSettings.fileURL.path) 里缺 mac 或 token")
-            statusLineItem.title = "还没配对，先用 --pair 弄一份配置"
+            statusLineItem.title = "还没配对，右键「重新配对…」走一遍向导"
             return
         }
         let s = DeviceSession(mac: mac, token: token)
@@ -132,6 +132,7 @@ final class TrayController: NSObject {
 
         menu.addItem(item("显示功率面板", #selector(showPanel)))
         menu.addItem(item("重新连接", #selector(reconnect)))
+        menu.addItem(item("重新配对…", #selector(runWizard)))
         menu.addItem(.separator())
 
         wattsItem = item("菜单栏显示功率数字", #selector(toggleWatts))
@@ -167,6 +168,31 @@ final class TrayController: NSObject {
         wattsItem.state = settings.showWattsInMenuBar ? .on : .off
         try? settings.save()
         updateTitle()
+    }
+
+    @objc private func runWizard() {
+        showWizard()
+    }
+
+    /// 首次运行（配置不全）时由 AppDelegate 调；菜单里点「重新配对…」也走这里。
+    func showWizardIfNeeded() {
+        guard !settings.isComplete else { return }
+        log.write("[tray] 配置不全，先弹向导：\(AppSettings.fileURL.path)")
+        showWizard()
+    }
+
+    private func showWizard() {
+        WizardController.show(settings: settings) { [weak self] newSettings in
+            guard let self else { return }
+            self.log.write("[tray] 向导写完配置，重建会话")
+            if let old = self.session {
+                Task { await old.stop() }
+            }
+            self.session = nil
+            self.settings = newSettings
+            self.bootSession()
+            self.updateTitle()
+        }
     }
 
     @objc private func openLog() {

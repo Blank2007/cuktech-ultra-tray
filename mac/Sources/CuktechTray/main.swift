@@ -34,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
         print("[tray] 菜单栏项已创建")
         fflush(stdout)
+        // 配置不全（第一次跑，或者配置被删了）就直接把配对向导摆出来。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            self.controller.showWizardIfNeeded()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -45,5 +49,15 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)   // 菜单栏 app：不占 Dock、不进 Cmd-Tab
 let controller = TrayController(settings: AppSettings.load())
 let delegate = AppDelegate(controller: controller)
-app.delegate = delegate
+
+if args.contains("--wizard-demo") {
+    // 文档与 CI 截图用：只把向导第一屏摆出来，不联网、不碰蓝牙。
+    DispatchQueue.main.async {
+        WizardController.show(settings: AppSettings())
+        print("[wizard] demo window shown")
+        fflush(stdout)
+    }
+} else {
+    app.delegate = delegate
+}
 app.run()
