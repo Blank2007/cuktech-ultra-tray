@@ -26,13 +26,12 @@ jobs:
       - name: swift test
         run: swift test --package-path mac
 
+  # 只用 macos-26-intel 这一档 runner：macos-26（arm64）经常排队十几分钟还被取消，
+  # 而 SwiftPM 在同一个 runner 上就能同时给 arm64 和 x86_64 出目标文件，
+  # 用 --arch arm64 --arch x86_64 直接产出 universal 二进制，不需要 arm64 硬件。
   build-macos:
-    name: build (${{ matrix.runner }})
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-26, macos-26-intel]
-    runs-on: ${{ matrix.runner }}
+    name: build (universal)
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
       - name: toolchain
@@ -41,8 +40,12 @@ jobs:
           xcodebuild -version
           uname -m
           sw_vers
-      - name: build
-        run: swift build -c release --package-path mac
+      - name: build (universal)
+        run: |
+          set -x
+          swift build -c release --package-path mac --arch arm64 --arch x86_64 \
+            || swift build -c release --package-path mac
+          lipo -info mac/.build/release/CuktechTray || true
       - name: make app
         run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
       - name: selftest
@@ -77,7 +80,7 @@ jobs:
         run: bash mac/scripts/package.sh dist
       - uses: actions/upload-artifact@v4
         with:
-          name: wizard-${{ matrix.runner }}
+          name: wizard-universal
           path: |
             dist/*.zip
             shot.png
@@ -90,13 +93,17 @@ jobs:
     name: release asset (mac zip)
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-macos
-    runs-on: macos-26
+    runs-on: macos-26-intel
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: build
-        run: swift build -c release --package-path mac
+      - name: build (universal)
+        run: |
+          set -x
+          swift build -c release --package-path mac --arch arm64 --arch x86_64 \
+            || swift build -c release --package-path mac
+          lipo -info mac/.build/release/CuktechTray || true
       - name: make app
         run: bash mac/scripts/make-app.sh mac/.build/release/CuktechTray dist
       - name: selftest
