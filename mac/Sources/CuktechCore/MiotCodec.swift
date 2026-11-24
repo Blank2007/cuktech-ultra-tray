@@ -150,7 +150,10 @@ public struct PortData: Sendable, Equatable {
         self.voltage = voltage
     }
 
-    public var power: Double { (voltage * current * 10).rounded() / 10 }
+    /// 与 Windows 版对齐：C# 是 Math.Round(v*c, 1)，即「四舍六入五成双」。
+    /// 用 half-away 的 rounded() 会在 20.1V×2.5A=50.25W 这种正好在中点的值上算出 50.3，
+    /// 而 Windows 版显示 50.2，两端不一致。
+    public var power: Double { (voltage * current * 10).rounded(.toNearestOrEven) / 10 }
     public var isIdle: Bool { state == 0x00 }
 
     public static func parse(_ valueBytes: [UInt8]?) -> PortData? {

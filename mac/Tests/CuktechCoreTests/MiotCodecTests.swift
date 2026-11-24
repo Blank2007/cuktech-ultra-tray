@@ -21,8 +21,9 @@ final class MiotCodecTests: XCTestCase {
     func testSetCommandBigValueUsesUInt32LE() {
         let f = MiotCodec.buildCommand(seq: 2, siid: 3, piid: 5, value: 300)
         XCTAssertEqual(f.count, 15)
-        XCTAssertEqual(f[9], 0x05)   // tl lo: typeId 5, len 4
-        XCTAssertEqual(f[10], 0x50)  // tl hi
+        // tl = (typeId << 12) | valueLen = (5 << 12) | 4 = 0x5004
+        XCTAssertEqual(f[9], 0x04)   // tl lo: len 4
+        XCTAssertEqual(f[10], 0x50)  // tl hi: typeId 5
         XCTAssertEqual(Array(f[11...]), [0x2C, 0x01, 0x00, 0x00])
     }
 

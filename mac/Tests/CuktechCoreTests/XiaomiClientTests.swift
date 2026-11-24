@@ -96,7 +96,8 @@ final class XiaomiClientTests: XCTestCase {
         XCTAssertEqual(XiaomiClient.parseTTL("180"), 180)
         XCTAssertEqual(XiaomiClient.parseTTL("180000"), 180)   // 毫秒
         XCTAssertEqual(XiaomiClient.parseTTL("10"), 30)        // 下夹
-        XCTAssertEqual(XiaomiClient.parseTTL("9999"), 300)     // 上夹
+        XCTAssertEqual(XiaomiClient.parseTTL("9999"), 30)      // 9999ms = 10s，被下夹到 30
+        XCTAssertEqual(XiaomiClient.parseTTL("180000"), 180)
         XCTAssertEqual(XiaomiClient.parseTTL("abc"), 300)
     }
 

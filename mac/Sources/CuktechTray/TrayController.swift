@@ -7,7 +7,7 @@ import CuktechBle
 /// 与 M0 的 AppDelegate 同一风格：不标 @MainActor，靠所有入口都在主线程
 /// （AppKit 回调、菜单动作、MainActor 上的 ticker）。
 final class TrayController: NSObject {
-    private let settings: AppSettings
+    private var settings: AppSettings   // 菜单里的「菜单栏显示功率数字」会就地改它
     private let log: LogFile
     private let statusItem: NSStatusItem
     let panel = PanelController()
