@@ -22,7 +22,8 @@ to the wizard, and macOS gets its own version number.
 - The wizard's first screen has a privacy-note line (opens a full dialog): scanning only exchanges this charger's Mac + token
   once with Xiaomi Cloud, credentials stay on this machine, normal operation reads power over Bluetooth with no network,
   and which two files to delete to clean up
-- README gained a "9. Privacy" section (both languages), matching the dialog
+- The legacy standalone installer `CuktechTray-Setup.exe` was rebuilt once (68 MB, embedding this very AOT binary) purely to
+  exercise the in-place-upgrade path; it is **not uploaded with the release** — install/uninstall still happen inside the main exe
 - Version 0.4.5 → 0.4.6
 
 ### macOS (own versioning from 0.1.0)
@@ -205,7 +206,8 @@ the installer, and its own updater**.
 - Restore warns `NU1903`: `Microsoft.DotNet.ILCompiler` 8.0.32 has a known high-severity advisory `GHSA-p3jp-9v83-76w9`; it will clear with a later .NET 8 SDK.
 - `LNK4099` during linking (missing MSVC-internal pdbs) is noise.
 - The `setup/` WinForms wizard is legacy now (62.9 MB host + 63.8 MB payload) and will not be maintained;
-  installing and uninstalling are done by the program itself. `dist\CuktechTray-Setup.exe` is still the 0.3.3 package and has not been rebuilt.
+  installing and uninstalling are done by the program itself. For 0.4.6 it was rebuilt once (68 MB, embedding that version's main
+  exe) just to verify the in-place upgrade, but it **never ships in a release**, and that release route should not come back.
 
 ## 0.3.3 — 2026-11-22
 
