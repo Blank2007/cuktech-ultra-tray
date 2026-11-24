@@ -321,6 +321,52 @@ internal static class MiCrypto
             return raw;
         }
 
-        return JsonSerializer.Serialize(raw);
+        return JsonQuote(raw);
+    }
+
+    /// <summary>
+    /// 按 JSON 规则把字符串写成带引号的字面量。**不要**换成 <c>JsonSerializer.Serialize</c>：
+    /// 发布成 NativeAOT 后反射式序列化默认是关掉的（runtimeconfig 里
+    /// System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault=false），那一行会在真机上抛
+    /// NotSupportedException: Reflection-based serialization has been disabled for this app。
+    /// 2026-11-25 就是这条：用户扫完码挑设备时卡在这句英文上，因为
+    /// /v2/home/home_device_list 的请求体正是用 JsonToken 拼的。手写转义既没这个坑，也不占 IL 体积。
+    /// </summary>
+    internal static string JsonQuote(string? raw)
+    {
+        if (raw == null)
+        {
+            return "null";
+        }
+
+        var sb = new StringBuilder(raw.Length + 2);
+        sb.Append('"');
+        foreach (var c in raw)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                default:
+                    if (c < ' ')
+                    {
+                        sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                    }
+
+                    break;
+            }
+        }
+
+        sb.Append('"');
+        return sb.ToString();
     }
 }

@@ -3,6 +3,31 @@
 这个项目最早只在我自己的一台电脑上跑，后来放到了 GitHub 上，所以下面是按「做过什么」整理的，
 版本号一路加到这里，方便对上安装包里的文件版本。
 
+## 0.4.6 — 2026-11-25
+
+修一个真实用户碰到的 bug：**扫码配对成功后，向导上直接显示一句英文**
+`Reflection-based serialization has been disabled for this app`。这是 NativeAOT 特有的坑——反射式 JSON 序列化在 AOT
+发布时被 SDK 关掉，而扫码链路上有两处用了它。顺带给向导加了隐私说明，macOS 版从这一版起自己编号。
+
+- 修扫码失败：`/v2/home/home_device_list` 的请求体是拿 `MiCrypto.JsonToken()` 拼的，而它内部原来是
+  `JsonSerializer.Serialize(raw)`；AOT 下这个调用直接抛 `NotSupportedException: Reflection-based serialization has been disabled for this app`。
+  改成手写转义 `MiCrypto.JsonQuote()`（引号 / 反斜杠 / 控制字符 / `\u00XX`，中文原样输出）；
+  `blt_get_beaconkey` 那处的 `JsonSerializer.Serialize(did)` 一并换成 `MiCrypto.JsonQuote(did)`
+- `--selftest` 增加 AOT 专项自查：7 项 JSON 转义断言 + 一次设置文件源生成序列化往返，逐行打 `[aot] … ok`；
+  末尾再打一行 `[aot] json-reflection-enabled=False`——把「AOT 下反射序列化确实是关的」写进日志，下次不用猜
+- 这个 bug 漏了整整一个版本，原因是本地测试一直用已保存的 `settings.json` 跳过登录，扫码链路从没在 AOT 下真机跑过；
+  现在自检把这条缺口补上了
+- 向导第一屏新增「隐私说明」一行（点开是全文弹窗）：扫码只向小米云换一次这台充电器的 Mac + token、凭据只写本机、
+  日常读功率走蓝牙不联网、想清干净删哪两个文件
+- README 新增「九、隐私」一节（中英同步），内容与向导里那段一致
+- 版本号 0.4.5 → 0.4.6
+
+### macOS 版（0.1.0 起独立编号）
+
+macOS 版不再跟 Windows 共用版本号，从 **0.1.0** 起自己算：`CuktechTray-0.1.0-mac.zip`。
+两个平台改动节奏不一样，绑同一个号只会让更新日志变成两边不相干的条目混在一起。
+这一版 macOS 端也加了隐私说明（欢迎页一段 + 「看完整的隐私说明」弹窗）。
+
 ## 0.4.5 — 2026-11-23
 
 程序界面和功能跟 0.4.4 完全一样，这一版改的是「拿什么当证据」：宣传素材不再复用早期截图，托盘图标由程序自己渲图，右键菜单从真身抓屏。

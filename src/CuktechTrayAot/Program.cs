@@ -89,9 +89,12 @@ internal static class Program
         if (Has(args, "--selftest"))
         {
             LogSink.Write("[selftest] start mac=" + settings.Mac + " tokenLen=" + settings.TokenHex.Length);
+            // 先跑 AOT 专项自查（手写 JSON 转义、设置源生成序列化），再连设备
+            bool aotOk = AotChecks.RunAll();
             bool ok = SelfTest.RunAsync(settings).GetAwaiter().GetResult();
+            LogSink.Write("[selftest] aot=" + (aotOk ? "ok" : "failed"));
             LogSink.Write("[selftest] " + (ok ? "ok" : "failed"));
-            return ok ? 0 : 1;
+            return ok && aotOk ? 0 : 1;
         }
 
         var ui = new UiDispatcher();

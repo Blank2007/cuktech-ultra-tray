@@ -4,6 +4,33 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.4.6 — 2026-11-25
+
+Fixes a bug a real user hit: **right after a successful QR pairing the wizard showed the English sentence**
+`Reflection-based serialization has been disabled for this app`. That is a NativeAOT trap — the SDK turns reflection-based
+JSON serialization off for AOT publishes, and the pairing path used it in two places. This version also adds a privacy note
+to the wizard, and macOS gets its own version number.
+
+- Fixed the pairing failure: the `/v2/home/home_device_list` body is built with `MiCrypto.JsonToken()`, which used
+  `JsonSerializer.Serialize(raw)` internally; under AOT that call throws `NotSupportedException: Reflection-based serialization has been disabled for this app`.
+  Replaced with a hand-written escaper `MiCrypto.JsonQuote()` (quotes / backslash / control characters / `\u00XX`, CJK kept as is);
+  the `JsonSerializer.Serialize(did)` in the `blt_get_beaconkey` path now uses `MiCrypto.JsonQuote(did)` too
+- `--selftest` gained AOT-specific checks: seven JSON-escaping assertions plus a settings source-generation round-trip, one `[aot] … ok` line each;
+  it also prints `[aot] json-reflection-enabled=False`, so "reflection serialization really is off under AOT" ends up in the log
+- The bug survived a whole release because local testing always used a saved `settings.json` and skipped the login path —
+  the pairing path had never been exercised on a real AOT build. The self-test now covers it
+- The wizard's first screen has a privacy-note line (opens a full dialog): scanning only exchanges this charger's Mac + token
+  once with Xiaomi Cloud, credentials stay on this machine, normal operation reads power over Bluetooth with no network,
+  and which two files to delete to clean up
+- README gained a "9. Privacy" section (both languages), matching the dialog
+- Version 0.4.5 → 0.4.6
+
+### macOS (own versioning from 0.1.0)
+
+macOS no longer shares the Windows version number; it starts at **0.1.0**: `CuktechTray-0.1.0-mac.zip`.
+The two platforms move at different speeds, and tying them to one number only mixes unrelated entries in the changelog.
+macOS also got the privacy note in this version (a paragraph on the welcome screen plus a "see the full note" dialog).
+
 ## 0.4.5 — 2026-11-23
 
 The UI and the feature set are identical to 0.4.4. What changed here is the evidence: the promo assets stop reusing older captures, the tray icon is rendered by the program itself, and the menu is captured from the real thing.

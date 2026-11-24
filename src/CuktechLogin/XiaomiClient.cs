@@ -929,7 +929,7 @@ public sealed class XiaomiClient : IDisposable
     private async Task<string?> FetchBeaconKeyTokenAsync(string region, string did, CancellationToken ct)
     {
         // json.dumps({"did": did, "pdid": 1})
-        var payload = "{\"did\": " + JsonSerializer.Serialize(did) + ", \"pdid\": 1}";
+        var payload = "{\"did\": " + MiCrypto.JsonQuote(did) + ", \"pdid\": 1}";
         var res = await CallApiAsync(region, "/v2/device/blt_get_beaconkey", payload, ct).ConfigureAwait(false);
         if (res == null)
         {

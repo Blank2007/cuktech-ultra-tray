@@ -27,6 +27,7 @@
 > 🍎 **macOS 版在 [`mac/`](mac/README.md)**：同一套协议、同一套取色规则，位置换成菜单栏文字（`NSStatusItem`，
 > 系统级、不是自绘浮层），纯 Swift 写的 .app 约 1 MB。功能对齐：菜单栏总功率、点开四路读数与开关、
 > 扫码配对向导。与自己这台充电器通信的部分完全独立于界面，协议层在 Linux 上都能跑单测。
+> macOS 版的版本号从 **0.1.0** 起自己算，不再跟 Windows 的 0.4.x 绑在一起。
 
 ![macOS 配对向导](docs/mac-wizard.png)
 
@@ -60,7 +61,7 @@
 
 > **想直接拿现成的？**
 > * Windows：**[最新版本](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** 里的 `CuktechTray-<版本>-win.exe`，10.4 MB
-> * macOS：同一个 Release 里的 `CuktechTray-<版本>-mac.zip`，约 0.9 MB（解压出 .app，universal，Intel 和 Apple Silicon 都能跑）
+> * macOS：同一个 Release 里的 `CuktechTray-<mac 版本>-mac.zip`（macOS 版自己编号，第一版是 `0.1.0`），约 0.9 MB（解压出 .app，universal，Intel 和 Apple Silicon 都能跑）
 >
 > Windows 就这一个文件，没有第二个安装包——它既是绿色版也是安装包。本仓库只放源码，产物不进仓库，请到
 > [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) 页面下载。
@@ -116,7 +117,7 @@
 搞定之后每次运行都不用再扫码，约 4 秒完成认证开始出数。
 
 > 扫码只是把**你自己账号里**的设备 token 取回本地。账号密码不经过这个程序，token 只写在本机的
-> `settings.json` 里；连上充电器之后完全走蓝牙本地通信，不需要联网。
+> `settings.json` 里；连上充电器之后完全走蓝牙本地通信，不需要联网。完整说明见 [九、隐私](#九隐私)。
 
 ---
 
@@ -338,7 +339,26 @@ AOT 需要 C 链接器：脚本会自己用 `.tools\lld\lld-link.exe` 加 `.tool
 
 ---
 
-## 九、致谢、联系与许可
+## 九、隐私
+
+这程序只碰两样东西：**你自己账号里这台充电器的凭据**，和**它自己的四路读数**。明细如下。
+
+| 什么时候 | 程序做了什么 | 数据去了哪 |
+| --- | --- | --- |
+| 第一次扫码配对 | 向小米云要一个登录二维码，你用手机米家 App 扫、并在手机上确认 | 账号、密码、验证码全程在手机端，程序看不见也拿不到 |
+| 配对完成那一刻 | 小米云返回这台充电器的 MAC 和 12 字节 token | 只写进本机 `settings.json`（安装版在 `%LOCALAPPDATA%\CuktechTray\settings.json`） |
+| 日常使用 | 跟充电器蓝牙直连，每秒读一次四路电压 / 电流 / 功率，四路开关也走这条链路 | 只在内存里显示，不落盘、不联网 |
+| 你主动点「检查更新」 | 访问 GitHub 一次，取最新版本号与下载地址 | 不发送任何本机信息 |
+
+- `session.json` 里会留一份登录会话（serviceToken），只是为了「重新配置设备」时少扫一次码；同样只在本机，删掉不影响日常使用
+- **不会做的事**：不上传读数、不做统计、不装后台服务、不碰你账号里的其它设备
+- **想清干净**：删掉 `settings.json` 与 `session.json`（或托盘菜单里卸载）；卸载之后本机不留任何东西
+- 蓝牙那一侧也不留痕——充电器本身不记录是哪台电脑连过它
+
+第一次运行向导第一屏下方就有一行「隐私说明」，点开就是上面这些（macOS 版在向导欢迎页同样有一段）。
+
+---
+## 十、致谢、联系与许可
 
 ### 用到的第三方组件
 

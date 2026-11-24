@@ -53,7 +53,7 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 
 > **Want one ready-made?**
 > * Windows: `CuktechTray-<version>-win.exe` from the **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** — 10.4 MB, that single file is all you need
-> * macOS: `CuktechTray-<version>-mac.zip` from the same release — about 0.9 MB, unpack to a .app (universal, runs on Intel and Apple Silicon)
+> * macOS: `CuktechTray-<mac version>-mac.zip` from the same release — about 0.9 MB, unpack to a .app (universal, runs on Intel and Apple Silicon). macOS has its own version line, starting at `0.1.0`
 >
 > This repo holds source only; the exe is not checked in, so please download it from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
 > It is **not code-signed**, so the first run may show the blue "Windows protected your PC" box — click **More info → Run anyway**.
@@ -317,7 +317,26 @@ Logs: `<exe folder>\logs\app.log` (rotated to `app.old.log` above 512 KB); check
 
 ---
 
-## 9. Credits, contact and license
+## 9. Privacy
+
+This program touches exactly two things: **the credentials of this one charger inside your own account**, and **its four-port readings**. Details:
+
+| When | What the program does | Where the data goes |
+| --- | --- | --- |
+| First QR pairing | Asks Xiaomi Cloud for a login QR code; you scan it and confirm in the Mi Home app | Account, password and verification code stay on the phone — the program never sees them |
+| The moment pairing finishes | Xiaomi Cloud returns this charger's MAC and a 12-byte token | Written only to the local `settings.json` (installed builds: `%LOCALAPPDATA%\CuktechTray\settings.json`) |
+| Everyday use | Connects to the charger over Bluetooth and reads voltage / current / power for four ports once per second; the port switches ride the same link | Shown in memory only — nothing written, no network |
+| When you click "Check for updates" | One request to GitHub for the latest version number and download URL | No local information is sent |
+
+- `session.json` keeps a login session (serviceToken) only so "reconfigure device" does not need another scan; it stays local, and deleting it breaks nothing
+- **What it never does**: upload readings, collect statistics, install a background service, or touch any other device in your account
+- **To wipe it clean**: delete `settings.json` and `session.json` (or uninstall from the tray menu); nothing is left behind
+- The Bluetooth side leaves no trace either — the charger does not record which computer connected to it
+
+The first wizard screen has a privacy-note line that opens exactly the text above (the macOS wizard has a paragraph plus a full-note dialog on its welcome screen).
+
+---
+## 10. Credits, contact and license
 
 ### Third-party components
 

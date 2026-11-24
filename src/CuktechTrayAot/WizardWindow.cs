@@ -45,6 +45,7 @@ internal sealed class WizardWindow : WinBase
     private const int HitSecondary = 2;
     private const int HitTertiary = 3;
     private const int HitClose = 4;
+    private const int HitPrivacy = 5;
     private const int HitListBase = 100;
 
     private readonly Settings _settings;
@@ -355,12 +356,46 @@ internal sealed class WizardWindow : WinBase
 
     private Rectangle CloseRect() => new Rectangle(S(DesignW - PadX - 24), S(18), S(24), S(24));
 
+    private Rectangle PrivacyRect() => new Rectangle(S(PadX), S(BtnY - 96), S(DesignW - PadX * 2), S(24));
+
+    /// <summary>
+    /// 隐私说明全文。用系统 MessageBox 而不是自绘弹窗：这是一段要用户慢慢读、
+    /// 能选中复制的文字，交给系统窗口比自绘对话框划算。内容对齐 README 的「隐私」一节。
+    /// </summary>
+    private void ShowPrivacy()
+    {
+        const string text =
+            "这是第三方小工具，不是小米或酷态科官方出的。\n" +
+            "\n" +
+            "一、扫码时会做什么\n" +
+            "· 本程序只跟小米云要一张登录二维码，你在手机米家 App 里扫码、确认。\n" +
+            "· 账号、密码、验证码都在你手机上，本程序看不见，也拿不到。\n" +
+            "· 小米云只返回这台充电器的 Mac 和 12 字节 token。\n" +
+            "\n" +
+            "二、数据留在哪里\n" +
+            "· 只写进本机的 settings.json。便携版就在 exe 同目录，\n" +
+            "  安装版在 %LOCALAPPDATA%\\CuktechTray\\settings.json。\n" +
+            "· 登录会话 session.json 也留在同一目录，\n" +
+            "  只是为了下次重新配置时少扫一次码。\n" +
+            "\n" +
+            "三、不会做的事\n" +
+            "· 不上传任何数据。日常读功率走电脑和充电器之间的蓝牙，不经过网络。\n" +
+            "· 只有你点「检查更新」时，才访问 GitHub 一次。\n" +
+            "\n" +
+            "四、想清干净\n" +
+            "· 删掉 settings.json 和 session.json，或用安装程序卸载，本机就什么都不剩。\n" +
+            "· 蓝牙那一侧不留任何东西，充电器自身也不存电脑的信息。";
+        LogSink.Write("[wizard] 用户点了隐私说明");
+        Native.MessageBoxW(Hwnd, text, "隐私说明 · 酷态科托盘", Native.MB_OK | Native.MB_ICONINFORMATION);
+    }
+
     private Rectangle ItemRect(int i)
         => new Rectangle(S(PadX), S(ListTop + i * (ItemH + ItemGap)), S(DesignW - PadX * 2), S(ItemH));
 
     private int HitTest(int x, int y)
     {
         if (CloseRect().Contains(x, y)) return HitClose;
+        if (_stage == Stage.Welcome && PrivacyRect().Contains(x, y)) return HitPrivacy;
         if (PrimaryRect().Contains(x, y)) return HitPrimary;
         if (SecondaryRect().Contains(x, y)) return HitSecondary;
         if (_stage == Stage.Picking && TertiaryRect().Contains(x, y)) return HitTertiary;
@@ -427,6 +462,7 @@ internal sealed class WizardWindow : WinBase
         _press = HitNone;
         if (p == HitNone || h != p) return;
         if (p == HitClose) { DoClose(false); return; }
+        if (p == HitPrivacy) { ShowPrivacy(); return; }
         if (p == HitPrimary) { Primary(); return; }
         if (p == HitSecondary)
         {
@@ -571,6 +607,10 @@ internal sealed class WizardWindow : WinBase
         Lines(g, body, _fBody, Dim, S(PadX), S(66), S(DesignW - PadX * 2), S(24), 8);
 
         Text(g, "支持 Windows 10 / 11，需要电脑有蓝牙", _fSmall, Faint, S(PadX), S(BtnY - 62), S(320), S(20));
+
+        // 隐私说明入口：一句话讲清「只换一次凭据」，点开看全文
+        GdiText.Draw(g, "隐私说明：扫码只为换一次设备凭据，其余全留本机（点这里看全文）", _fSmall,
+            _hover == HitPrivacy ? Fg : Ok, PrivacyRect(), TextAnchor.Left, ellipsis: true);
     }
 
     private void PaintScanning(Graphics g)

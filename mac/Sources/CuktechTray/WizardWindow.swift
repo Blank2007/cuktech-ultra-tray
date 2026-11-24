@@ -267,6 +267,7 @@ final class WizardModel: ObservableObject {
 
 struct WizardView: View {
     @ObservedObject var model: WizardModel
+    @State private var showPrivacy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -327,9 +328,58 @@ struct WizardView: View {
 
             previewCard
 
+            privacyNote
+
             if model.showManual {
                 manualForm
             }
+        }
+    }
+
+    /// 隐私说明：一句人话 + 点开看全文。内容跟 README 的「隐私」一节、
+    /// Windows 版向导里那个弹窗保持一致。
+    private var privacyNote: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 11))
+                .foregroundColor(Theme.ok.opacity(0.85))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("不是小米或酷态科官方出的。扫码只向小米云换一次这台充电器的 Mac 和 token，凭据只写在本机的 config.json；日常读功率走蓝牙，不联网。")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("看完整的隐私说明") { showPrivacy = true }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(Theme.ok)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.card.opacity(0.6)))
+        .alert("隐私说明", isPresented: $showPrivacy) {
+            Button("知道了", role: .cancel) { }
+        } message: {
+            Text("""
+            这是第三方小工具，不是小米或酷态科官方出的。
+
+            一、扫码时会做什么
+            · 只向小米云要一张登录二维码，你在手机米家 App 里扫码、确认。
+            · 账号、密码、验证码都在你手机上，本程序看不见，也拿不到。
+            · 小米云只返回这台充电器的 Mac 和 12 字节 token。
+
+            二、数据留在哪里
+            · 只写进本机的 config.json（~/Library/Application Support/CuktechTray/）。
+            · 登录会话 session.json 也留在同一目录，只是为了下次重新配置少扫一次码。
+
+            三、不会做的事
+            · 不上传任何数据；日常读功率走电脑和充电器之间的蓝牙，不经过网络。
+            · 只有你点「检查更新」时才访问 GitHub 一次。
+
+            四、想清干净
+            · 删掉 CuktechTray 这个配置目录，本机就什么都不剩；蓝牙那头不留任何东西。
+            """)
         }
     }
 
