@@ -84,25 +84,34 @@ struct PanelView: View {
     }
 
     private func portRow(slot: PortSlot) -> some View {
-        HStack(spacing: 10) {
+        // C3 与 A 共用一个功率计时，搭车那一路没有自己的数字：名字不换、读数写暗色「并入 C3+A」。
+        let passenger = snap.isMergedPassenger(slot)
+        let bar = passenger
+            ? WattStyle.dim
+            : (slot.enabled ? (slot.watts > 0.05 ? WattStyle.port(slot.watts) : WattStyle.ok) : WattStyle.dim)
+        return HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(Theme.color(slot.enabled ? (slot.watts > 0.05 ? WattStyle.port(slot.watts) : WattStyle.ok) : WattStyle.dim))
+                .fill(Theme.color(bar))
                 .frame(width: 3, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(PortData.portName(slot.index))
+                Text(snap.rowName(slot))
                     .font(.system(size: 11))
                     .foregroundColor(Theme.dim)
-                Text(slot.detail)
+                Text(snap.rowDetail(slot))
                     .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundColor(slot.enabled ? Theme.fg : Theme.dim)
+                    .foregroundColor(passenger ? Theme.dim : (slot.enabled ? Theme.fg : Theme.dim))
             }
 
             Spacer(minLength: 0)
 
-            Text(slot.enabled ? WattStyle.text(slot.watts) : "断电")
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundColor(Theme.color(slot.enabled ? WattStyle.port(slot.watts) : WattStyle.dim))
+            Text(snap.rowWattsText(slot))
+                .font(.system(size: passenger ? 11 : 15,
+                              weight: passenger ? .regular : .semibold,
+                              design: .monospaced))
+                .foregroundColor(Theme.color(passenger
+                                             ? WattStyle.dim
+                                             : (slot.enabled ? WattStyle.port(slot.watts) : WattStyle.dim)))
 
             Toggle("", isOn: Binding(
                 get: { slot.enabled },

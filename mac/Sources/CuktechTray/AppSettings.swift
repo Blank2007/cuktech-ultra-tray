@@ -8,8 +8,24 @@ public struct AppSettings: Codable, Sendable {
     public var tokenHex: String = ""
     public var pollInterval: Double = 2.0
     public var showWattsInMenuBar: Bool = true
+    /// 首次启动的隐私说明有没有点过「同意并继续」。老配置里没有这个字段，按 false 算（继续问一次）。
+    public var privacyAccepted: Bool = false
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case mac, tokenHex, pollInterval, showWattsInMenuBar, privacyAccepted
+    }
+
+    /// 手写解码：缺字段一律回落到默认值，别让新增字段把老用户的 config.json 判成坏文件。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mac = try c.decodeIfPresent(String.self, forKey: .mac) ?? ""
+        tokenHex = try c.decodeIfPresent(String.self, forKey: .tokenHex) ?? ""
+        pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? 2.0
+        showWattsInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showWattsInMenuBar) ?? true
+        privacyAccepted = try c.decodeIfPresent(Bool.self, forKey: .privacyAccepted) ?? false
+    }
 
     public static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser

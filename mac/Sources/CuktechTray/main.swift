@@ -19,36 +19,58 @@ if args.contains("--selftest") {
     print("[selftest] paired=\(settings.isComplete)")
     print("[selftest] mac=\(settings.mac.isEmpty ? "(未设置)" : settings.mac)")
     print("[selftest] tokenBytes=\(settings.tokenBytes?.count ?? 0)")
+    print("[selftest] privacyAccepted=\(settings.privacyAccepted)")
     exit(0)
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let controller: TrayController
+    private var settings: AppSettings
+    private var controller: TrayController?
 
-    init(controller: TrayController) {
-        self.controller = controller
+    init(settings: AppSettings) {
+        self.settings = settings
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 首次启动必须先同意隐私说明：不同意就当场退出、不写盘；同意才落 privacyAccepted 并继续启动。
+        // --version / --selftest / --wizard-demo 在 main 里已经 exit 或者走了演示分支，进不到这里。
+        if !settings.privacyAccepted {
+            print("[privacy] 第一次启动，先问一句隐私说明")
+            fflush(stdout)
+            guard PrivacyGate.requireConsent() else {
+                print("[privacy] 用户选择「不同意，退出」，本次不写任何配置")
+                fflush(stdout)
+                exit(0)
+            }
+            settings.privacyAccepted = true
+            do {
+                try settings.save()
+                print("[privacy] 用户已同意，privacyAccepted=true 写进 \(AppSettings.fileURL.path)")
+            } catch {
+                print("[privacy] 用户已同意，但写配置失败：\(error)")
+            }
+            fflush(stdout)
+        }
+
+        let controller = TrayController(settings: settings)
+        self.controller = controller
         controller.start()
         print("[tray] 菜单栏项已创建")
         fflush(stdout)
         // 配置不全（第一次跑，或者配置被删了）就直接把配对向导摆出来。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            self.controller.showWizardIfNeeded()
+            self.controller?.showWizardIfNeeded()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        controller.shutdown()
+        controller?.shutdown()
     }
 }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)   // 菜单栏 app：不占 Dock、不进 Cmd-Tab
-let controller = TrayController(settings: AppSettings.load())
-let delegate = AppDelegate(controller: controller)
 
 if let demoArg = args.first(where: { $0 == "--wizard-demo" || $0.hasPrefix("--wizard-demo=") }) {
     // 文档与 CI 截图用：把向导的某一屏摆出来（welcome / login / pick / done），
@@ -62,6 +84,7 @@ if let demoArg = args.first(where: { $0 == "--wizard-demo" || $0.hasPrefix("--wi
         fflush(stdout)
     }
 } else {
-    app.delegate = delegate
+    // 正式启动路径：这里才可能弹「首次启动隐私说明」那道门（在 applicationDidFinishLaunching 里）。
+    app.delegate = AppDelegate(settings: AppSettings.load())
 }
 app.run()

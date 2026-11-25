@@ -424,10 +424,11 @@ public final class MibleSession: @unchecked Sendable {
             guard let msg = try await decodeInline(data) else { continue }
 
             if msg.siid == siid && msg.piid == UInt8(piid & 0xFF) {
-                // 设备对 SET 只回 op=0x01 ACK（不含新值），无需额外空等 1s，由调用方显式 GET 回读
-                if msg.isGetResult || msg.isSetAck {
-                    return msg
-                }
+                // GET 只认 op=0x03 结果、SET 只认 op=0x01 ACK（ACK 里没有新值，由调用方显式 GET 回读）。
+                // 两者都立刻返回、不再空等 1s；但 GET 不能被同 siid/piid 的 SET ACK 提前截断
+                // （ACK 的 valueBytes 是空的，提前返回会让回读被跳过）。
+                if msg.isGetResult { return msg }
+                if isSet && msg.isSetAck { return msg }
             }
             if msg.isPush { onPush?(msg) }
         }

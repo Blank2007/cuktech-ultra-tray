@@ -29,7 +29,7 @@ macOS 版的「酷态科 10 号 Ultra」功率表：一个菜单栏小工具，�
 
 下载 `CuktechTray-<版本>-mac.zip`，解压出 `CuktechTray.app`，拖进「应用程序」。
 
-> macOS 版的版本号**自己算**，从 `0.1.0` 起（当前 `0.1.1`），不跟 Windows 版的 0.4.x 绑在一起——两个平台改动节奏不一样，
+> macOS 版的版本号**自己算**，从 `0.1.0` 起（当前 `0.1.2`），不跟 Windows 版的 0.4.x 绑在一起——两个平台改动节奏不一样，
 > 绑同一个号只会让更新日志里一半条目跟对方无关。当前版本见 `--version`。
 
 这个 .app 是 **ad-hoc 签名**（本仓库没有 Apple 开发者账号，没做公证），第一次打开时
@@ -81,6 +81,28 @@ FE95 广播，用广播里反解出来的地址补上。实在不行还有「手
 
 ---
 
+## C3 与 A 合并成一路功率（0.1.2）
+
+充电器在 **C3 与 A 同时通电**时，把这两个口的功率合并到同一路功率计上上报：C3 那一路的原始帧里
+state 变成 `0x11`（`0x01` 是单口工作、`0x00` 是空闲），另一路回的是「有电但空载」。米家 App 也只显示一个合并值。
+
+0.1.2 起跟着合并，规则与 Windows 版完全一致（同一份判据、同一套措辞）：
+
+- **判据**：`merged = (C3.hasData && C3.state == 0x11) || (A.hasData && A.state == 0x11)`；
+- **主人（owner）**：C3 在工作就让 C3 当 owner，否则 A 在工作就让 A 当 owner，两个都不在工作就用 C3；
+- **名字**：owner 那一行显示 `C3+A`，另一行仍是 `A`；
+- **另一行**：不再写「空载」，改成暗色的 `并入 C3+A`；右侧功率位显示暗色 `—`，不显示数字
+  （macOS 版只有一页，读数与开关在同一条行上，所以规格里「读数页」和「控制页实时读数列」这两条在这里是同一行里的两段）；
+- **总功率**：这一对只算一次（只累加 owner 的 watts，另一路跳过），状态栏那个总数不会翻倍；
+- **没合并时**：一切照旧——还是 `C3` / `A` 两行各自读数，空闲仍显示「空载」。
+
+实测样例（`port_switch=0x0F`）：C3 原始帧 `11 30 04 33` → 5.1V / 0.4A = 2.04W，A 原始帧 `00 30 00 00`
+（state=0x00、code=0x30 = 通电但空载）。0.1.2 之前 A 那行会显示「空载 0.0W」，看着像 A 没在充电。
+
+这个问题的报告人是 issue #1 的 [@KingGxxT](https://github.com/KingGxxT)。
+
+---
+
 ## 隐私
 
 和 Windows 版完全一致：只碰**你自己账号里这台充电器的凭据**和**它自己的读数**。
@@ -93,6 +115,49 @@ FE95 广播，用广播里反解出来的地址补上。实在不行还有「手
 - **不做的事**：不上传读数、不做统计、不装后台服务、不碰账号里的其它设备；卸载后本机不留东西
 
 向导欢迎页那段小字点开就是上面这些。
+
+### 首次启动必须先同意（0.1.2）
+
+0.1.2 起，**第一次打开**（配置里没有 `privacyAccepted` 或者它是 `false`）会先弹一个模态窗口，
+把下面「隐私说明全文」摆出来，底部两个按钮：
+
+- **同意并继续**（绿色主按钮）→ 把 `privacyAccepted = true` 写进 `config.json`，然后照常启动
+  （还没配对就照旧弹配对向导）；
+- **不同意，退出**（暗色次要按钮）→ 本程序直接退出，**不写任何文件**（下次打开还会再问一遍）。
+
+窗口跟向导同一套样子：深色底、绿色主按钮、暗色次要按钮，Esc 和点红叉都关不掉——
+只能选这两个按钮之一。实现是 `Sources/CuktechTray/PrivacyWindow.swift` 里的 `PrivacyView` / `PrivacyGate`
+（`NSApp.runModal(for:)`），入口在 `Sources/CuktechTray/main.swift` 的 `applicationDidFinishLaunching` 最前面。
+
+**演示 / 自检路径不弹这道门**：`--version`、`--selftest`、`--wizard-demo=<屏>` 这类非交互参数一律不问，
+CI 里那四屏截图和自检照旧能跑。想重置成「第一次打开」的样子，把 `config.json` 里的
+`privacyAccepted` 删掉（或改成 `false`）即可。
+
+### 隐私说明全文
+
+> 这是第三方小工具，不是小米或酷态科官方出的。
+
+**一、扫码时会做什么**
+
+- 只向小米云要一张登录二维码，你在手机米家 App 里扫码、确认。
+- 账号、密码、验证码都在你手机上，本程序看不见，也拿不到。
+- 小米云只返回这台充电器的 Mac 和 12 字节 token。
+
+**二、数据留在哪里**
+
+- 只写进本机的 config.json（`~/Library/Application Support/CuktechTray/`）。
+- 登录会话 session.json 也留在同一目录，只是为了下次重新配置少扫一次码。
+
+**三、不会做的事**
+
+- 不上传任何数据；日常读功率走电脑和充电器之间的蓝牙，不经过网络。
+- 只有你点「检查更新」时才访问 GitHub 一次。
+
+**四、想清干净**
+
+- 删掉 CuktechTray 这个配置目录，本机就什么都不剩；蓝牙那头不留任何东西。
+
+（这段文字和程序里弹窗显示的、以及 Windows 版向导里的是同一份，只有路径写法按平台不同。）
 
 ---
 ## 命令行参数
@@ -145,7 +210,7 @@ mac/
   Package.swift                SwiftPM 清单（CuktechCore / CuktechBle / CuktechTray）
   Sources/CuktechCore/         协议核心：AES-CCM、HKDF、MiOT 编解码、小米云客户端
   Sources/CuktechBle/          CoreBluetooth：连接、认证、扫描
-  Sources/CuktechTray/         菜单栏 App：状态栏、面板、向导
+  Sources/CuktechTray/         菜单栏 App：状态栏、面板、向导、首次启动隐私同意（PrivacyWindow.swift）
   Tests/CuktechCoreTests/      单元测试（黄金向量、协议、云端解析）
   Tests/CuktechBleTests/       广播解析回归测试（只在 macOS 上编译）
   scripts/build-universal.sh   在单台机器上编 universal（arm64 + x86_64）
@@ -181,9 +246,24 @@ mac/
 
 ---
 
+## 0.1.2 里的其它修正
+
+除了合入 PR #3，0.1.2 还动了三处：
+
+- **等应答的判据收紧**（`Sources/CuktechCore/MibleSession.swift` 的 `receiveResponse`）：改之前 GET 与 SET
+  共用一个「op 是 GET_RESULT 或者 SET ACK 就算回来了」，于是同一个 siid/piid 上先到的 SET ACK（里面没有新值）
+  会把后面真正的 GET 结果顶掉，回读校验就被跳过。现在 GET 只认 `op=0x03` 的 GET_RESULT，
+  SET 只认 `op=0x01` 的 ACK；新值一律由调用方显式 GET 回读。
+- **合并功率显示**：见上面「C3 与 A 合并成一路功率」。
+- **首次启动隐私同意**：见上面「隐私」一节。
+
+---
+
 ## 致谢
 
 - [@editwe](https://github.com/editwe)：[PR #2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2) —— macOS「配对成功但连不上」的根因（广播解析把 `95 FE` 服务 UUID 头当成必需的）是他定位并修好的，还补了用真机广播字节写的回归测试与构建时生成图标的脚本，0.1.1 的改动基本都是他的。
+- [@a1287448852](https://github.com/a1287448852)：[PR #3](https://github.com/Blank2007/cuktech-ultra-tray/pull/3) —— 一口气修了四个真问题：端口开关索引错位一位（`PortSlot.index` 是 1…4，写入口却按 0…3 校验，导致开关错位、USB-A 报「端口序号只能是 0~3」）、Swift actor 在 `await` 处可重入导致并发命令把加密帧计数器写乱（新增 `AsyncCommandMutex` / `withTransactionLock(urgent:)` 与 `teardownLink()`）、SET ACK 之后那 1 秒空等、浅色系统 + 深色壁纸下状态栏破折号几乎看不见。合并时我额外收紧了 GET/SET 的等待判据（见上一节），0.1.2 的这四个修复以他的版本为基础。
+- [@KingGxxT](https://github.com/KingGxxT)：[issue #1](https://github.com/Blank2007/cuktech-ultra-tray/issues/1) —— 报出「C3 与 A 同时充电时，没数的那一路显示成空载」这个显示 bug，并给了复现条件（两个口一起开、米家 App 只显示一个合并值）。0.1.2 的合并功率显示是因为他才有的。
 
 ## 许可证
 

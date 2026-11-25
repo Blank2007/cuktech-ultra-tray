@@ -126,7 +126,86 @@ public struct DeviceSnapshot: Sendable {
 
     public init() {}
 
-    public var totalWatts: Double { ports.reduce(0) { $0 + $1.watts } }
+    // MARK: - C3 与 A 合并成一路功率计
+
+    /// C3 与 A 是同一路功率计：固件在两口同时工作时把功率合并成一路报，
+    /// 那一路的 state 是 0x11（0x00 空闲 / 0x01 单口工作）。判据与 Windows 版完全一致：
+    /// merged = (C3.hasData && C3.state == 0x11) || (A.hasData && A.state == 0x11)。
+    public static let c3PortIndex = 3
+    public static let aPortIndex = 4
+    /// 合并时这行要显示的名字（替代 C3 / A 其中一个）。
+    public static let mergedPairName = "C3+A"
+    /// 合并时非 owner 那行的暗色提示。
+    public static let mergedPassengerText = "并入 C3+A"
+
+    static func isWorking(_ slot: PortSlot) -> Bool {
+        slot.enabled && slot.hasData && !slot.idle
+    }
+
+    /// 按 1-based 端口序号取那一行（顺带容忍端口数组顺序变化）。
+    private func slot(at portIndex: Int) -> PortSlot? {
+        ports.first { $0.index == portIndex }
+    }
+
+    public var pairMerged: Bool {
+        let c3 = slot(at: DeviceSnapshot.c3PortIndex)
+        let usbA = slot(at: DeviceSnapshot.aPortIndex)
+        let c3Merged = (c3?.hasData ?? false) && c3?.state == 0x11
+        let aMerged = (usbA?.hasData ?? false) && usbA?.state == 0x11
+        return c3Merged || aMerged
+    }
+
+    /// 合并后由哪一路代表这份读数：C3 在工作就是 C3，否则 A 在工作就是 A，都不在工作算 C3。
+    public var mergedOwner: Int {
+        if let c3 = slot(at: DeviceSnapshot.c3PortIndex), DeviceSnapshot.isWorking(c3) {
+            return DeviceSnapshot.c3PortIndex
+        }
+        if let usbA = slot(at: DeviceSnapshot.aPortIndex), DeviceSnapshot.isWorking(usbA) {
+            return DeviceSnapshot.aPortIndex
+        }
+        return DeviceSnapshot.c3PortIndex
+    }
+
+    /// 合并时「搭车」的那一行：自己没有读数，显示暗色的「并入 C3+A」。
+    public func isMergedPassenger(_ slot: PortSlot) -> Bool {
+        guard pairMerged else { return false }
+        let inPair = slot.index == DeviceSnapshot.c3PortIndex || slot.index == DeviceSnapshot.aPortIndex
+        return inPair && slot.index != mergedOwner
+    }
+
+    /// 这一行端口名：合并时 owner 那行显示 C3+A。
+    public func rowName(_ slot: PortSlot) -> String {
+        guard pairMerged, slot.index == mergedOwner else { return slot.name }
+        return DeviceSnapshot.mergedPairName
+    }
+
+    /// 这一行左侧的读数文字：合并时搭车那行不再写「空载」，写暗色的「并入 C3+A」。
+    public func rowDetail(_ slot: PortSlot) -> String {
+        if !slot.enabled { return "已断电" }
+        if !slot.hasData { return "无应答" }
+        if isMergedPassenger(slot) { return DeviceSnapshot.mergedPassengerText }
+        if slot.idle { return "空载" }
+        return String(format: "%.1fV · %.2fA", slot.voltage, slot.current)
+    }
+
+    /// 这一行右侧的功率文字：合并时搭车那行没有自己的数，占位一条破折号。
+    public func rowWattsText(_ slot: PortSlot) -> String {
+        if !slot.enabled { return "断电" }
+        if isMergedPassenger(slot) { return "—" }
+        return WattStyle.text(slot.watts)
+    }
+
+    /// 总功率。合并时 C3 与 A 只算一次（只累加 owner 那份），另一路跳过。
+    public var totalWatts: Double {
+        guard pairMerged else { return ports.reduce(0) { $0 + $1.watts } }
+        let owner = mergedOwner
+        return ports.reduce(0) { sum, slot in
+            let inPair = slot.index == DeviceSnapshot.c3PortIndex || slot.index == DeviceSnapshot.aPortIndex
+            if inPair && slot.index != owner { return sum }
+            return sum + slot.watts
+        }
+    }
+
     public var totalText: String { WattStyle.text(totalWatts) }
     public var totalColor: RGB { WattStyle.total(totalWatts) }
     public var sceneName: String { SceneMode.name(sceneMode) }

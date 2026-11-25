@@ -361,25 +361,8 @@ struct WizardView: View {
         .alert("隐私说明", isPresented: $showPrivacy) {
             Button("知道了", role: .cancel) { }
         } message: {
-            Text("""
-            这是第三方小工具，不是小米或酷态科官方出的。
-
-            一、扫码时会做什么
-            · 只向小米云要一张登录二维码，你在手机米家 App 里扫码、确认。
-            · 账号、密码、验证码都在你手机上，本程序看不见，也拿不到。
-            · 小米云只返回这台充电器的 Mac 和 12 字节 token。
-
-            二、数据留在哪里
-            · 只写进本机的 config.json（~/Library/Application Support/CuktechTray/）。
-            · 登录会话 session.json 也留在同一目录，只是为了下次重新配置少扫一次码。
-
-            三、不会做的事
-            · 不上传任何数据；日常读功率走电脑和充电器之间的蓝牙，不经过网络。
-            · 只有你点「检查更新」时才访问 GitHub 一次。
-
-            四、想清干净
-            · 删掉 CuktechTray 这个配置目录，本机就什么都不剩；蓝牙那头不留任何东西。
-            """)
+            // 跟首次启动那道同意门共用一份正文（PrivacyWindow.swift 的 PrivacyText），别在这儿另写一份。
+            Text(PrivacyText.plain)
         }
     }
 
