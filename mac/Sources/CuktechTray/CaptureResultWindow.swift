@@ -62,9 +62,25 @@ struct CaptureResultView: View {
 
             VStack(spacing: 5) {
                 row("有效时长", "\(result.activeDurationText)（总 \(result.totalDurationText)）")
-                row("峰值功率", "\(result.peakText) W")
-                row("电压区间", voltageLine)
+                // 电压没跨档就不写区间（一个数比「9.0–9.0V」清楚），换档 0 次也不必占一行。
+                if result.spansRails { row("电压区间", result.voltageText) }
+                if result.stats.voltageChanges > 0 { row("换档次数", "\(result.stats.voltageChanges) 次") }
                 row("采样次数", "\(result.stats.sampleCount) 次")
+            }
+
+            Divider().opacity(0.25).padding(.vertical, 11)
+
+            // 平均 / 最大两列：平均按有效时长算，最大只取带载样本的极值。
+            VStack(spacing: 5) {
+                HStack(spacing: 8) {
+                    Text("").frame(width: 34, alignment: .leading)
+                    Spacer(minLength: 0)
+                    columnHeader("平均")
+                    columnHeader("最大")
+                }
+                metricRow("电压", "\(result.averageVoltageText) V", "\(result.peakVoltageText) V")
+                metricRow("电流", "\(result.averageCurrentText) A", "\(result.peakCurrentText) A")
+                metricRow("功率", "\(result.averageText) W", "\(result.peakText) W")
             }
 
             Text("采集结果仅供参考 · 仅本次显示，不写入磁盘")
@@ -105,12 +121,6 @@ struct CaptureResultView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// 电压区间后面补一句换档次数——设备切换档位时是按段积分算的，这里直接告诉用户跳了几次。
-    private var voltageLine: String {
-        let n = result.stats.voltageChanges
-        return n > 0 ? "\(result.voltageText) · 换档 \(n) 次" : result.voltageText
-    }
-
     private func row(_ name: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(name)
@@ -120,6 +130,32 @@ struct CaptureResultView: View {
             Text(value)
                 .font(.system(size: 10.5, design: .monospaced))
                 .foregroundColor(Theme.fg)
+        }
+    }
+
+    private func columnHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9.5))
+            .foregroundColor(Theme.dim.opacity(0.85))
+            .frame(width: 58, alignment: .trailing)
+    }
+
+    /// 小表一行：左边指标名，右边「平均 / 最大」两列。
+    private func metricRow(_ name: String, _ avg: String, _ peak: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(name)
+                .font(.system(size: 10.5))
+                .foregroundColor(Theme.dim)
+                .frame(width: 34, alignment: .leading)
+            Spacer(minLength: 0)
+            Text(avg)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Theme.fg)
+                .frame(width: 58, alignment: .trailing)
+            Text(peak)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Theme.fg)
+                .frame(width: 58, alignment: .trailing)
         }
     }
 

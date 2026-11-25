@@ -11,6 +11,12 @@ final class PanelModel: ObservableObject {
     @Published var busy = false
     /// 面板被钉住。钉住后点外部不收起，相当于一个常驻小窗。
     @Published var pinned = false
+    /// 面板「始终在最前」：把 popover 的窗口层级提到 .floating，压在其他 App 窗口之上。
+    /// 跟 pinned 不是一回事 —— pinned 只管「点外面收不收」，这个才管「谁在上面」。
+    @Published var alwaysOnTop = false
+    /// 面板背景用不用玻璃质感。跟 AppSettings.glassPanel 同步，
+    /// 只影响底色（玻璃底下要留缝），布局和配色常量一概不动。
+    @Published var glassEnabled = true
     /// 蓝牙读数间隔（秒）。config.json 里的 pollInterval，改完立刻生效并落盘。
     @Published var pollInterval: Double = 2.0
     /// 正在采集的端口（1..4），nil = 没在采集。
@@ -100,7 +106,8 @@ struct PanelView: View {
         .padding(.top, 12)
         .padding(.bottom, 10)
         .frame(width: 340, height: 424)
-        .background(Theme.background)
+        // 玻璃开着时把底色调薄，让宿主里垫的玻璃/毛玻璃透出来；关掉就是原来的实色。
+        .background(Theme.background.opacity(GlassSupport.backdropOpacity(glass: model.glassEnabled)))
         .preferredColorScheme(.dark)
     }
 
@@ -346,6 +353,13 @@ struct PanelView: View {
                 .font(.system(size: 11))
                 .foregroundColor(Theme.dim)
             pollIntervalMenu
+            if model.alwaysOnTop {
+                // 只在开启时占位：面板高度是固定的 340×424，常驻一行字会挤到下面。
+                Text("置顶中")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(Theme.dim.opacity(0.9))
+                    .help("面板始终在最前：压在其他 App 窗口之上。右键菜单里可以关掉。")
+            }
             Spacer()
             Button("设置") { model.onShowSettings?() }
                 .buttonStyle(.plain)
@@ -437,6 +451,12 @@ final class PanelController: NSObject, NSPopoverDelegate {
     /// 我们的可见范围内，光靠监听鼠标不一定收得到。
     private var appSwitchObserver: NSObjectProtocol?
     private var isPinned = false
+    /// 「始终在最前」的当前值。窗口是懒创建的（show 之前
+    /// `popover.contentViewController.view.window` 还是 nil），所以这里自己留一份，
+    /// 每次 show 之后再统一调一次 `applyWindowLevel()`。
+    private var alwaysOnTop = false
+    /// 垫在面板内容下面那层玻璃/毛玻璃。玻璃开关切换时直接改它的可见性。
+    private var backdropView: PanelBackdropView?
 
     override init() {
         super.init()
@@ -464,7 +484,30 @@ final class PanelController: NSObject, NSPopoverDelegate {
         if !pop.isShown {
             pop.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
+        // 窗口是 show 之后才有的：放在这里才拿得到，重新显示也不会丢层级。
+        applyWindowLevel()
         if !isPinned { installOutsideMonitors() }
+    }
+
+    /// 托盘菜单里的「面板始终在最前」勾选项进来。存进 AppSettings 由 TrayController 负责。
+    func setAlwaysOnTop(_ on: Bool) {
+        alwaysOnTop = on
+        model.alwaysOnTop = on
+        applyWindowLevel()
+    }
+
+    /// 托盘菜单里的「面板玻璃质感」勾选项进来。只切背景层，布局和配色都不动。
+    func setGlassEnabled(_ on: Bool) {
+        model.glassEnabled = on
+        backdropView?.setEnabled(on)
+    }
+
+    /// 把 popover 的窗口层级改成 .floating / .normal。
+    /// 注意 NSPopover 不自带 window 属性，得从 contentViewController 摸上去；
+    /// 面板没弹出来过时 window 是 nil，直接跳过（show 时会再调一次）。
+    private func applyWindowLevel() {
+        guard let w = popover?.contentViewController?.view.window else { return }
+        w.level = alwaysOnTop ? .floating : .normal
     }
 
     func close() {
@@ -560,8 +603,20 @@ final class PanelController: NSObject, NSPopoverDelegate {
         // 系统拿去「激活 App」，像点了没反应 —— 也让系统控件画成不活跃的灰绿。
         // 用接受首次点击的 hosting view，第一下就落在控件上。
         let host = FirstMouseHostingView(rootView: PanelView(model: model))
+        // 背景层 + 内容层装进一个普通容器：popover 的圆角裁剪在外面，
+        // 玻璃只要填满这块 340x424 就行，SwiftUI 那边把底色调薄让出来。
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 424))
+        let backdrop = GlassSupport.makeBackdrop()
+        backdrop.frame = container.bounds
+        backdrop.autoresizingMask = [.width, .height]
+        backdrop.setEnabled(model.glassEnabled)
+        container.addSubview(backdrop)
+        host.frame = container.bounds
+        host.autoresizingMask = [.width, .height]
+        container.addSubview(host)
+        backdropView = backdrop
         let vc = NSViewController()
-        vc.view = host
+        vc.view = container
         pop.contentViewController = vc
         pop.delegate = self
         return pop

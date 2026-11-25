@@ -10,11 +10,28 @@ public struct AppSettings: Codable, Sendable {
     public var showWattsInMenuBar: Bool = true
     /// 首次启动的隐私说明有没有点过「同意并继续」。老配置里没有这个字段，按 false 算（继续问一次）。
     public var privacyAccepted: Bool = false
+    /// 上次连上的那台设备（CBPeripheral.identifier 的字符串）。
+    /// 有了它，重连 / 系统唤醒后可以直接从「系统已连接的设备」里认出它，不用等广播。
+    /// **必须是 String? 而不是 String = ""**：非可选会让老配置（没这个键）整个解码失败，
+    /// 而解码失败会退回默认值、下一次存盘就把 mac / token 冲掉，用户得重新配对。
+    public var peripheralId: String?
+    /// 面板窗口是否「始终在最前」（跨 App 置顶，不只在本 App 内固定）。
+    /// 老配置没有这个键，按 false 算；解不出来也不该影响其它字段。
+    public var alwaysOnTop: Bool = false
+    /// 菜单栏那一格是否用**固定宽度**（58pt）。
+    /// 默认开：读数每秒在变，宽度跟着变会把右边其它菜单栏图标推来推去。
+    /// 老配置没有这个键，按 true 算（这才是「修好抖动」的默认行为）。
+    public var fixedMenuBarWidth: Bool = true
+    /// 面板背景是否用玻璃质感：macOS 26 起是真 Liquid Glass，13~15 上退化成毛玻璃。
+    /// 老配置没有这个键，按 true 算；关掉就回到原来的实色面板。
+    public var glassPanel: Bool = true
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case mac, tokenHex, pollInterval, showWattsInMenuBar, privacyAccepted
+        case peripheralId, alwaysOnTop
+        case fixedMenuBarWidth, glassPanel
     }
 
     /// 手写解码：缺字段一律回落到默认值，别让新增字段把老用户的 config.json 判成坏文件。
@@ -25,6 +42,11 @@ public struct AppSettings: Codable, Sendable {
         pollInterval = try c.decodeIfPresent(Double.self, forKey: .pollInterval) ?? 2.0
         showWattsInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showWattsInMenuBar) ?? true
         privacyAccepted = try c.decodeIfPresent(Bool.self, forKey: .privacyAccepted) ?? false
+        // 可选：老配置没有这个键就是 nil（千万别写成 ?? ""，语义上是「还不知道」而不是「空」）
+        peripheralId = try c.decodeIfPresent(String.self, forKey: .peripheralId)
+        alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
+        fixedMenuBarWidth = try c.decodeIfPresent(Bool.self, forKey: .fixedMenuBarWidth) ?? true
+        glassPanel = try c.decodeIfPresent(Bool.self, forKey: .glassPanel) ?? true
     }
 
     public static var directory: URL {

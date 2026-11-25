@@ -69,10 +69,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// `--capture-demo` 用的假数据：一段 9.1V 恒压、1.62~2.24A 抖动的带载，
+/// 中间每 211 个样本插一次 2.38A 的浪峰（这样「平均/最大」看得出差别），
+/// 尾巴再补 32 个空载样本（state 0x00），模拟「这个口没输出了 → 采集结束」。
+/// 只用来截图和肉眼检查结果窗，不碰蓝牙、不联网、不落盘。
+func captureDemoResult() -> CaptureResult {
+    var acc = CaptureAccumulator()
+    // xorshift64：要的是「每次跑都一样」的可复现抖动，不是真随机数。
+    var seed: UInt64 = 0x2545_F491_4F6C_DD1D
+    func nextUnit() -> Double {
+        seed ^= seed << 13
+        seed ^= seed >> 7
+        seed ^= seed << 17
+        return Double(seed % 1000) / 1000.0
+    }
+    let start = Date().addingTimeInterval(-2692)
+    for i in 0..<2661 {
+        let current = i % 211 == 0 ? 2.38 : (1.62 + nextUnit() * 0.62)
+        acc.add(PortData(state: 0x01, code: 2, current: current, voltage: 9.10),
+                at: start.addingTimeInterval(Double(i)))
+    }
+    for i in 2661..<2693 {
+        acc.add(PortData(state: 0x00, code: 0, current: 0, voltage: 0),
+                at: start.addingTimeInterval(Double(i)))
+    }
+    return CaptureResult(portIndex: 1,
+                         startedAt: start,
+                         endedAt: start.addingTimeInterval(2692),
+                         stats: acc,
+                         reason: .noLoad,
+                         firmware: "2.1.2_0079")
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)   // 菜单栏 app：不占 Dock、不进 Cmd-Tab
 
-if let demoArg = args.first(where: { $0 == "--wizard-demo" || $0.hasPrefix("--wizard-demo=") }) {
+if args.contains("--capture-demo") {
+    // 文档与 CI 截图用：直接摆一个「已经采集完」的结果窗，样本是造出来的。
+    DispatchQueue.main.async {
+        CaptureResultController.shared.show(captureDemoResult())
+        print("[capture] demo window shown")
+        fflush(stdout)
+    }
+} else if let demoArg = args.first(where: { $0 == "--wizard-demo" || $0.hasPrefix("--wizard-demo=") }) {
     // 文档与 CI 截图用：把向导的某一屏摆出来（welcome / login / pick / done），
     // 填的是假数据，不联网、不碰蓝牙。
     let screen = demoArg.contains("=")

@@ -17,6 +17,16 @@ final class TrayController: NSObject {
     private var ticker: Task<Void, Never>?
     private var statusLineItem: NSMenuItem!
     private var wattsItem: NSMenuItem!
+    /// 右键菜单里的「面板始终在最前」勾选项。
+    private var alwaysOnTopItem: NSMenuItem!
+    /// 右键菜单里的「菜单栏固定宽度」与「面板玻璃质感」勾选项。
+    private var fixedWidthItem: NSMenuItem!
+    private var glassItem: NSMenuItem!
+    /// 上次真正画到菜单栏上的内容指纹。读数每 400ms 刷一次，没变就不重画 ——
+    /// 每次改 attributedTitle 都会让菜单栏重排，观感上就是那一格在抖。
+    private var lastRenderedTitleKey: String?
+    /// 系统唤醒重连的限速时间戳：屏幕反复亮灭时会连着发好几条 didWake。
+    private var lastWakeReconnect: Date?
     /// 右键菜单。左键不弹它——左键直接开面板（README 一直是这么写的，
     /// 之前把 menu 挂死在 statusItem 上，结果左键点出来的是菜单，面板反而要再点一次）。
     private let statusMenu = NSMenu()
@@ -29,8 +39,14 @@ final class TrayController: NSObject {
         buildMenu()
         wireStatusItemButton()
         wirePanel()
+        // 按配置恢复「始终在最前」。此时面板还没弹出来过（window 是 nil），
+        // PanelController 会记住这个值，等 show 的时候补上。
+        panel.setAlwaysOnTop(settings.alwaysOnTop)
+        // 玻璃质感同理：面板还没造出来时只记住开关，等 makePopover 时按当前值装配。
+        panel.setGlassEnabled(settings.glassPanel)
         SettingsController.shared.onLog = { [weak self] line in self?.log.write(line) }
-        updateTitle()
+        applyStatusItemLength()
+        updateTitle(force: true)
     }
 
     // MARK: - 生命周期
@@ -38,6 +54,15 @@ final class TrayController: NSObject {
     func start() {
         log.write("[tray] 启动 version=\(BuildInfo.version) config=\(AppSettings.fileURL.path)")
         bootSession()
+
+        // 合盖/睡眠回来后，BLE 连接基本已经废了（GATT 句柄失效、peripheral 还在
+        // "connected" 状态但读写全超时），macOS 自己不会帮我们重连。
+        // 这里主动重连一次，比让用户盯着不动的读数去手点强。
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(didWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil)
 
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -52,6 +77,8 @@ final class TrayController: NSObject {
     }
 
     func shutdown() {
+        NSWorkspace.shared.notificationCenter.removeObserver(
+            self, name: NSWorkspace.didWakeNotification, object: nil)
         ticker?.cancel()
         ticker = nil
         if let s = session {
@@ -69,7 +96,10 @@ final class TrayController: NSObject {
             SettingsController.shared.attach(session: nil)
             return
         }
-        let s = DeviceSession(mac: mac, token: token)
+        // 上次认出来的设备 identifier：带上它，重连时可跳过扫描直接接管
+        // 系统里已连着的那条连接（设备被旧连接占着时根本不广播）。
+        let known = settings.peripheralId.flatMap { UUID(uuidString: $0) }
+        let s = DeviceSession(mac: mac, token: token, knownPeripheral: known)
         session = s
         SettingsController.shared.attach(session: s)
         let poll = settings.pollInterval
@@ -77,6 +107,19 @@ final class TrayController: NSObject {
         Task {
             await s.setPollInterval(poll)
             await s.setLogHandler { line in logger.write(line) }
+            // 认出设备真身后记进配置，下次唤醒/重连直接用。
+            await s.setPeripheralHandler { [weak self] id in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    guard self.settings.peripheralId != id.uuidString else { return }
+                    self.settings.peripheralId = id.uuidString
+                    do {
+                        try self.settings.save()
+                    } catch {
+                        self.log.write("[tray] 保存设备 identifier 失败：\(error)")
+                    }
+                }
+            }
             await s.start()
         }
     }
@@ -106,22 +149,40 @@ final class TrayController: NSObject {
         return img
     }()
 
-    private func updateTitle() {
+    /// 菜单栏固定在一点宽度时占多少点。读数最长就是 "100.0W" 这一档（见 WattStyle.format），
+    /// 12pt 等宽数字大约 45pt，58pt 留了点余量给「未配对」和色块边缘。
+    private static let fixedMenuBarLength: CGFloat = 58
+
+    /// 按设置决定菜单栏宽度。
+    /// 系统默认的 .variableLength 会跟着文字长度伸缩，读数在 9.9W ↔ 10.0W 之间跳时整格宽度就变，
+    /// 右边所有菜单栏图标跟着左右挪 —— 这就是「菜单栏在抖」。固定宽度后格子不动，只有数字变。
+    /// 图标模式没有文字，照旧交给系统伸缩。
+    private func applyStatusItemLength() {
+        let fixed = settings.fixedMenuBarWidth && settings.showWattsInMenuBar
+        statusItem.length = fixed ? Self.fixedMenuBarLength : NSStatusItem.variableLength
+    }
+
+    /// 把当前 snapshot 画到菜单栏。
+    /// force 为真时无条件重画（启动、切菜单项、改宽度之后）；否则先比内容指纹，
+    /// 一样就直接返回 —— 读数每 400ms 刷一次，绝大部分时候什么都没变。
+    private func updateTitle(force: Bool = false) {
         guard let button = statusItem.button else { return }
-        let text: String
-        var color: NSColor?
+        let tip = snapshot.connected ? snapshot.headline : "酷态科 10 号 Ultra · \(snapshot.status)"
 
         if !settings.showWattsInMenuBar {
+            let key = "icon|\(tip)"
+            guard force || key != lastRenderedTitleKey else { return }
+            lastRenderedTitleKey = key
             button.image = Self.boltIcon
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
             button.attributedTitle = NSAttributedString(string: "")
-            button.toolTip = snapshot.connected ? snapshot.headline : "酷态科 10 号 Ultra · \(snapshot.status)"
+            button.toolTip = tip
             return
         }
 
-        button.image = nil
-        button.imagePosition = .noImage
+        let text: String
+        var color: NSColor?
 
         if snapshot.connected {
             text = snapshot.totalText
@@ -135,6 +196,17 @@ final class TrayController: NSObject {
             text = "未配对"
         }
 
+        // 颜色也要进指纹：功率跨色档时得跟着换色。
+        let colorKey = color.map {
+            "\($0.redComponent),\($0.greenComponent),\($0.blueComponent)"
+        } ?? "auto"
+        let key = "\(text)|\(colorKey)|\(statusItem.length)|\(tip)"
+        guard force || key != lastRenderedTitleKey else { return }
+        lastRenderedTitleKey = key
+
+        button.image = nil
+        button.imagePosition = .noImage
+
         var attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
         ]
@@ -143,7 +215,7 @@ final class TrayController: NSObject {
             attrs[.foregroundColor] = color
         }
         button.attributedTitle = NSAttributedString(string: text, attributes: attrs)
-        button.toolTip = snapshot.connected ? snapshot.headline : "酷态科 10 号 Ultra · \(snapshot.status)"
+        button.toolTip = tip
     }
 
     private func refreshMenuStatus() {
@@ -172,6 +244,18 @@ final class TrayController: NSObject {
         wattsItem = item("菜单栏显示功率数字", #selector(toggleWatts))
         wattsItem.state = settings.showWattsInMenuBar ? .on : .off
         menu.addItem(wattsItem)
+
+        alwaysOnTopItem = item("面板始终在最前", #selector(toggleAlwaysOnTop))
+        alwaysOnTopItem.state = settings.alwaysOnTop ? .on : .off
+        menu.addItem(alwaysOnTopItem)
+
+        fixedWidthItem = item("菜单栏固定宽度", #selector(toggleFixedMenuBarWidth))
+        fixedWidthItem.state = settings.fixedMenuBarWidth ? .on : .off
+        menu.addItem(fixedWidthItem)
+
+        glassItem = item("面板玻璃质感", #selector(toggleGlassPanel))
+        glassItem.state = settings.glassPanel ? .on : .off
+        menu.addItem(glassItem)
 
         menu.addItem(.separator())
         menu.addItem(item("打开日志", #selector(openLog)))
@@ -232,7 +316,48 @@ final class TrayController: NSObject {
         settings.showWattsInMenuBar.toggle()
         wattsItem.state = settings.showWattsInMenuBar ? .on : .off
         try? settings.save()
-        updateTitle()
+        // 图标模式和固定宽度是互斥的：切过去要重新按设置定宽度，再无条件重画一次。
+        applyStatusItemLength()
+        updateTitle(force: true)
+    }
+
+    /// 「菜单栏固定宽度」：勾上给菜单栏那一格钉死 58pt，读数变化时整格不再伸缩。
+    @objc private func toggleFixedMenuBarWidth() {
+        settings.fixedMenuBarWidth.toggle()
+        fixedWidthItem.state = settings.fixedMenuBarWidth ? .on : .off
+        try? settings.save()
+        applyStatusItemLength()
+        updateTitle(force: true)
+        log.write("[tray] 菜单栏固定宽度 -> \(settings.fixedMenuBarWidth)")
+    }
+
+    /// 「面板玻璃质感」：勾上给面板背景垫玻璃（26+ Liquid Glass，13~15 毛玻璃）。
+    @objc private func toggleGlassPanel() {
+        settings.glassPanel.toggle()
+        glassItem.state = settings.glassPanel ? .on : .off
+        try? settings.save()
+        panel.setGlassEnabled(settings.glassPanel)
+        log.write("[panel] 玻璃质感 -> \(settings.glassPanel)")
+    }
+
+    /// 「面板始终在最前」：勾上把面板窗口层级提到 .floating，关掉回 .normal。
+    /// 跟面板右上角那个图钉不是一回事 —— 图钉只管「点外面不收起」，这个是压别的窗口。
+    @objc private func toggleAlwaysOnTop() {
+        settings.alwaysOnTop.toggle()
+        alwaysOnTopItem.state = settings.alwaysOnTop ? .on : .off
+        try? settings.save()
+        panel.setAlwaysOnTop(settings.alwaysOnTop)
+        log.write("[panel] 始终在最前 -> \(settings.alwaysOnTop)")
+    }
+
+    /// 系统唤醒（合盖、睡眠、显示器断开）后重连一次。
+    /// 60 秒内只做一次：屏幕反复亮灭会连着来好几条通知，不然就成重连风暴了。
+    @objc private func didWake() {
+        if let last = lastWakeReconnect, Date().timeIntervalSince(last) < 60 { return }
+        lastWakeReconnect = Date()
+        guard let s = session else { return }
+        log.write("[tray] 系统唤醒，重新建立连接")
+        Task { await s.reconnectNow() }
     }
 
     @objc private func runWizard() {

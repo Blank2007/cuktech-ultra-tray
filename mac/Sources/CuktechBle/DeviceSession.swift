@@ -9,6 +9,11 @@ public actor DeviceSession {
     public private(set) var snapshot = DeviceSnapshot()
     public var onSnapshot: ((DeviceSnapshot) -> Void)?
     public var onLog: ((String) -> Void)?
+    /// 认出设备真身后回调（上层存进配置，下次直接按 identifier 认设备）。
+    public var onPeripheralIdentified: ((UUID) -> Void)?
+    /// 上次连上的那台设备的 identifier。系统唤醒 / 重连后靠它从
+    /// 「系统已连接设备」里认人，不用等广播。
+    private var knownPeripheral: UUID?
 
     private let mac: [UInt8]
     private let token: [UInt8]
@@ -28,9 +33,10 @@ public actor DeviceSession {
     private var urgentWaiters: [CheckedContinuation<Void, Never>] = []
     private var backgroundWaiters: [CheckedContinuation<Void, Never>] = []
 
-    public init(mac: [UInt8], token: [UInt8]) {
+    public init(mac: [UInt8], token: [UInt8], knownPeripheral: UUID? = nil) {
         self.mac = mac
         self.token = token
+        self.knownPeripheral = knownPeripheral
     }
 
     public var macText: String {
@@ -43,6 +49,7 @@ public actor DeviceSession {
     public func setPollInterval(_ v: TimeInterval) { pollInterval = max(0.5, v) }
     public func setLogHandler(_ handler: ((String) -> Void)?) { onLog = handler }
     public func setSnapshotHandler(_ handler: ((DeviceSnapshot) -> Void)?) { onSnapshot = handler }
+    public func setPeripheralHandler(_ handler: ((UUID) -> Void)?) { onPeripheralIdentified = handler }
 
     public func start() async {
         guard !running else { return }
@@ -65,7 +72,7 @@ public actor DeviceSession {
                     }
                     try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
                 }
-                teardownLink()
+                dropConnection()
                 if running {
                     publish(status: "连接断了，正在重连…", connected: false, error: "设备断开")
                     log("[session] 连接断开，准备重连")
@@ -73,7 +80,7 @@ public actor DeviceSession {
                 }
             } catch {
                 // 异常退出前必须主动断开旧连接，否则充电器被旧连接占住会停止广播 FE95，后续重连一直扫不到
-                teardownLink()
+                dropConnection()
                 failures += 1
                 let msg = humanize(error)
                 publish(status: "没连上", connected: false, error: msg)
@@ -91,13 +98,15 @@ public actor DeviceSession {
         teardownLink()
     }
 
-    /// 立刻重连：丢掉当前会话，让外层循环重新开始。
+    /// 立刻重连：只断连接，不丢 CBCentralManager。
+    /// （每次重连都新建 central 会越堆越多，旧连接还占着设备，最后谁都连不上。）
     public func reconnectNow() {
-        teardownLink()
+        dropConnection()
     }
 
     // MARK: - 连接与轮询
 
+    /// 彻底丢掉整条链路（含 CBCentralManager）。只在停止 / 退出时用。
     private func teardownLink() {
         let old = link
         link = nil
@@ -105,13 +114,23 @@ public actor DeviceSession {
         old?.onNotification = nil
         old?.onDisconnect = nil
         old?.onLog = nil
-        old?.disconnect()
+        old?.onPeripheralIdentified = nil
+        old?.shutdown()
     }
 
-    private func connectOnce() async throws {
-        teardownLink()
-        publish(status: "正在连接…", connected: false, error: nil)
+    /// 只断连接 + 停扫描，保留同一个 CBMibleLink，下次重连复用它。
+    private func dropConnection() {
+        mible = nil
+        link?.onNotification = nil
+        link?.shutdown()
+    }
 
+    /// 复用同一条链路，没有才新建（回调只挂一次，挂多了会重复触发）。
+    private func linkOrCreate() -> CBMibleLink {
+        if let l = link {
+            l.preferredIdentifier = knownPeripheral
+            return l
+        }
         let l = CBMibleLink()
         l.onLog = { [weak self, weak l] s in
             Task { await self?.handleLinkLog(l, s) }
@@ -119,6 +138,28 @@ public actor DeviceSession {
         l.onDisconnect = { [weak self, weak l] why in
             Task { await self?.handleDisconnect(l, why) }
         }
+        l.onPeripheralIdentified = { [weak self, weak l] id in
+            Task { await self?.rememberPeripheral(id, from: l) }
+        }
+        l.preferredIdentifier = knownPeripheral
+        return l
+    }
+
+    /// 记住设备 identifier：变了才更新并通知上层存盘。
+    private func rememberPeripheral(_ id: UUID, from source: CBMibleLink?) {
+        guard let source, link === source else { return }
+        guard knownPeripheral != id else { return }
+        knownPeripheral = id
+        log("[session] 记住设备 \(id.uuidString)")
+        onPeripheralIdentified?(id)
+    }
+
+    private func connectOnce() async throws {
+        // 只断连接：残留连接必须拆掉（否则设备停广播、扫不到），但 central 要留着。
+        dropConnection()
+        publish(status: "正在连接…", connected: false, error: nil)
+
+        let l = linkOrCreate()
         link = l
         mible = nil
 

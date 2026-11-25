@@ -67,6 +67,17 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
     public var onNotification: ((MibleChannel, [UInt8]) -> Void)?
     public var onDisconnect: ((String) -> Void)?
     public var onLog: ((String) -> Void)?
+    /// 认出设备真身（CBPeripheral.identifier）时回调一次，上层存下来下次直接认人。
+    public var onPeripheralIdentified: ((UUID) -> Void)?
+
+    /// 上次连上的那台设备。有了它，重连（尤其系统唤醒后）可以直接从
+    /// 「系统里已连接的设备」中认出来，不用再等广播出现。
+    public var preferredIdentifier: UUID? {
+        get { lock.lock(); defer { lock.unlock() }; return preferred }
+        set { lock.lock(); preferred = newValue; lock.unlock() }
+    }
+
+    private var preferred: UUID?
 
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "io.github.blank2007.cuktechtray.ble")
@@ -102,6 +113,9 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
     /// 扫到 MAC 匹配的设备并连上，订阅关系留着由 MibleSession 发起。
     public func connect(mac: [UInt8], scanTimeout: TimeInterval = 20) async throws {
         guard mac.count == 6 else { throw CBLinkError.deviceNotFound("MAC 格式不对") }
+        // 上一轮如果没断干净，设备那边还挂着一条连接：广播扫不到、connect 也会被顶掉。
+        await dropStaleConnection()
+
         lock.lock(); targetMAC = mac; found = nil; foundAdv = nil; connected = false
         servicesDiscovered = false; charsDiscovered = false; chars.removeAll(); lock.unlock()
 
@@ -113,6 +127,13 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
         } catch {
             throw CBLinkError.bluetoothUnavailable("蓝牙 30 秒内没就绪，检查「系统设置 → 隐私与安全性 → 蓝牙」是否允许了本程序")
         }
+        // 系统里可能已经连着这台设备（上次没断开就退出、或刚唤醒还没恢复广播），
+        // 能接管就接管——省掉一次扫描，也避免「扫不到广播 → 退避 → 再扫」的死循环。
+        if let p = adoptableConnected() {
+            log("系统里有已连接的设备，直接接管")
+            try await finishConnect(p)
+            return
+        }
         log("蓝牙就绪，开始扫描")
 
         lock.lock(); central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil); lock.unlock()
@@ -120,13 +141,43 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
             try await waitUntil(scanTimeout) { self.readFound() != nil }
         } catch {
             lock.lock(); central.stopScan(); lock.unlock()
+            // 扫描这段时间里系统可能刚把残留连接交回来，再看一眼再判死刑。
+            if let p = adoptableConnected() {
+                log("扫描超时，但系统里有已连接的设备，直接接管")
+                try await finishConnect(p)
+                return
+            }
             throw CBLinkError.deviceNotFound("扫不到 MAC 为 \(macString(mac)) 的广播")
         }
-        lock.lock(); central.stopScan(); let p = found!; lock.unlock()
+        lock.lock(); central.stopScan(); lock.unlock()
+        guard let p = readFound() else {
+            throw CBLinkError.deviceNotFound("扫不到 MAC 为 \(macString(mac)) 的广播")
+        }
         log("扫到 \(macString(mac))，开始连接")
+        try await finishConnect(p)
+    }
 
-        lock.lock(); peripheral = p; p.delegate = self; central.connect(p, options: nil); lock.unlock()
-        try await waitUntil(15) { self.readConnected() }
+    /// 接管 / 连上一台具体的设备：装 delegate、等连接、发现服务与特征，
+    /// 最后把 identifier 记下来交给上层存盘。
+    private func finishConnect(_ p: CBPeripheral) async throws {
+        lock.lock()
+        peripheral = p
+        p.delegate = self
+        servicesDiscovered = false
+        charsDiscovered = false
+        chars.removeAll()
+        let already = (p.state == .connected)
+        connected = already
+        if !already { central.connect(p, options: nil) }
+        lock.unlock()
+
+        if !already {
+            do {
+                try await waitUntil(15) { self.readConnected() }
+            } catch {
+                throw CBLinkError.connectFailed("15 秒内没连上（系统里可能还留着旧连接）")
+            }
+        }
 
         log("已连接，找服务")
         lock.lock(); p.discoverServices([Self.serviceUUID]); lock.unlock()
@@ -136,6 +187,54 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
         lock.lock(); p.discoverCharacteristics(nil, for: svc); lock.unlock()
         try await waitUntil(10) { self.readCharsDiscovered() }
         log("特征齐了：\(readCharNames())")
+
+        // 记住这台设备：下次（比如系统唤醒后）按 identifier 认人，不用再靠广播。
+        if preferredIdentifier != p.identifier {
+            preferredIdentifier = p.identifier
+            onPeripheralIdentified?(p.identifier)
+        }
+    }
+
+    /// 断掉上一轮留下的连接（不动 central 本身）。
+    /// macOS 上进程上次没断开就退出时，系统会留着「已连接」状态：
+    /// 这时 scanForPeripherals 扫不到广播，connect 也会被残留连接顶掉。
+    private func dropStaleConnection() async {
+        lock.lock()
+        let old = peripheral
+        peripheral = nil
+        service = nil
+        connected = false
+        servicesDiscovered = false
+        charsDiscovered = false
+        chars.removeAll()
+        lock.unlock()
+
+        guard let old = old, old.state != .disconnected else { return }
+        log("发现上一轮的残留连接，先断开")
+        central.cancelPeripheralConnection(old)
+        do {
+            try await waitUntil(3) { old.state == .disconnected }
+            log("残留连接已断开")
+        } catch {
+            log("残留连接 3 秒内没断开，先继续")
+        }
+    }
+
+    /// 系统里已经连接着的设备。有 identifier 就认它；没有的话，
+    /// 只有「唯一一台」才敢接管——同时连着好几台时盲选会连到别的设备上。
+    private func adoptableConnected() -> CBPeripheral? {
+        let wanted = preferredIdentifier
+        let known = central.retrieveConnectedPeripherals(withServices: [Self.serviceUUID])
+        guard !known.isEmpty else { return nil }
+        if let w = wanted, let hit = known.first(where: { $0.identifier == w }) { return hit }
+        return known.count == 1 ? known[0] : nil
+    }
+
+    /// 彻底收摊：停扫描 + 断连接。丢弃这个 link 之前调用，
+    /// 否则残留连接会一直占着设备（下次就扫不到广播了）。
+    public func shutdown() {
+        lock.lock(); central.stopScan(); lock.unlock()
+        disconnect()
     }
 
     public func disconnect() {

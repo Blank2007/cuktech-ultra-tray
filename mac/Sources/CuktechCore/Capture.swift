@@ -24,6 +24,12 @@ public struct CaptureAccumulator: Sendable {
     public private(set) var voltageChanges = 0
     public private(set) var minVoltage: Double?
     public private(set) var maxVoltage: Double?
+    /// 峰值电流（A）：只统计带载样本，拔线瞬间的 0A 不参与。
+    public private(set) var peakCurrent: Double = 0
+    /// 「电压 × 秒」的积分，除以 effectiveSeconds 就是平均电压。
+    public private(set) var voltSeconds: Double = 0
+    /// 「电流 × 秒」的积分，同上。
+    public private(set) var ampSeconds: Double = 0
     public private(set) var lastVoltage: Double = 0
     public private(set) var lastCurrent: Double = 0
     public private(set) var lastPower: Double = 0
@@ -31,7 +37,9 @@ public struct CaptureAccumulator: Sendable {
     public private(set) var firstActiveAt: Date?
     public private(set) var lastActiveAt: Date?
 
-    private var prev: (v: Double, i: Double, t: Date)?
+    /// 上一个采样点。带 active 是因为「换档」只能在前后都带载时才算：
+    /// 拔线那一刻电压从 9V 掉到 0V，差值够大，但那是拔线不是换档。
+    private var prev: (v: Double, i: Double, t: Date, active: Bool)?
 
     public init() {}
 
@@ -40,6 +48,19 @@ public struct CaptureAccumulator: Sendable {
     public var averagePower: Double {
         guard effectiveSeconds > 0.5, energyWh > 0 else { return 0 }
         return energyWh / (effectiveSeconds / 3600)
+    }
+
+    /// 平均电压 / 平均电流：跟能量同口径——都用「有效秒数」做分母，
+    /// 跨档那一秒按跳变前的档位记（和 avgW 一致），所以不会因为 5V→20V 的
+    /// 算术平均把平均值抬高。有效时间太短（<= 0.5 秒）时直接给 0，没意义。
+    public var averageVoltage: Double {
+        guard effectiveSeconds > 0.5, voltSeconds > 0 else { return 0 }
+        return voltSeconds / effectiveSeconds
+    }
+
+    public var averageCurrent: Double {
+        guard effectiveSeconds > 0.5, ampSeconds > 0 else { return 0 }
+        return ampSeconds / effectiveSeconds
     }
 
     /// 最近一次采样是否还在输出。
@@ -59,13 +80,13 @@ public struct CaptureAccumulator: Sendable {
         lastCurrent = d.current
         lastPower = power
 
-        if d.voltage > 0.05 {
-            minVoltage = min(minVoltage ?? d.voltage, d.voltage)
-            maxVoltage = max(maxVoltage ?? d.voltage, d.voltage)
-        }
-
+        // 电压区间/峰值电流只在带载时更新：拔线后设备会报 0V，
+        // 把那个 0V 记进区间会让「电压区间」显示成 0–9V，看着像掉压。
         if active {
             peakPower = max(peakPower, power)
+            peakCurrent = max(peakCurrent, d.current)
+            minVoltage = min(minVoltage ?? d.voltage, d.voltage)
+            maxVoltage = max(maxVoltage ?? d.voltage, d.voltage)
             if firstActiveAt == nil { firstActiveAt = t }
             lastActiveAt = t
         }
@@ -76,13 +97,19 @@ public struct CaptureAccumulator: Sendable {
             if active && dt > 0.2 && dt <= 4.0 {
                 let sameRail = abs(d.voltage - p.v) < 0.35
                 let wPrev = p.v * p.i
+                // 同档用两端平均，跨档按跳变前的值——能量、电压、电流三段口径必须一致，
+                // 否则会出现「电量对不上平均功率×时长」这种自相矛盾的数字。
                 let avgW = sameRail ? (wPrev + power) / 2 : wPrev
+                let vSeg = sameRail ? (p.v + d.voltage) / 2 : p.v
+                let iSeg = sameRail ? (p.i + d.current) / 2 : p.i
                 energyWh += avgW * dt / 3600
+                voltSeconds += vSeg * dt
+                ampSeconds += iSeg * dt
                 effectiveSeconds += dt
             }
         }
-        if let p = prev, abs(d.voltage - p.v) >= 0.5 { voltageChanges += 1 }
-        prev = (d.voltage, d.current, t)
+        if let p = prev, active, p.active, abs(d.voltage - p.v) >= 0.5 { voltageChanges += 1 }
+        prev = (d.voltage, d.current, t, active)
     }
 }
 
@@ -144,6 +171,40 @@ public struct CaptureResult: Sendable {
         stats.effectiveSeconds > 0.5 ? stats.effectiveSeconds : 0
     }
 
+    /// 平均电压/电流：没带载过就给「—」，别显示 0.00 让人以为坏了。
+    public var averageVoltageText: String {
+        stats.averageVoltage > 0.05 ? String(format: "%.2f", stats.averageVoltage) : "—"
+    }
+
+    public var peakVoltageText: String {
+        guard let hi = stats.maxVoltage else { return "—" }
+        return String(format: "%.2f", hi)
+    }
+
+    public var peakCurrentText: String {
+        stats.peakCurrent > 0.005 ? String(format: "%.2f", stats.peakCurrent) : "—"
+    }
+
+    public var averageCurrentText: String {
+        stats.averageCurrent > 0.005 ? String(format: "%.2f", stats.averageCurrent) : "—"
+    }
+
+    /// 电压区间有没有跨档（跨了才值得写成「5.0–20.0V」）。
+    public var spansRails: Bool {
+        guard let lo = stats.minVoltage, let hi = stats.maxVoltage else { return false }
+        return abs(hi - lo) >= 0.3
+    }
+
+    public var voltageDetailText: String {
+        guard let lo = stats.minVoltage, let hi = stats.maxVoltage else { return "—" }
+        return String(format: "%.2f V（最大 %.2f V）", lo, hi)
+    }
+
+    public var currentDetailText: String {
+        guard stats.peakCurrent > 0.005 else { return "—" }
+        return String(format: "%.2f A（最大 %.2f A）", stats.averageCurrent, stats.peakCurrent)
+    }
+
     public var energyText: String { String(format: "%.2f", stats.energyWh) }
     public var averageText: String { String(format: "%.1f", stats.averagePower) }
     public var peakText: String { String(format: "%.1f", stats.peakPower) }
@@ -176,6 +237,8 @@ public struct CaptureResult: Sendable {
         lines.append("充入电量：\(energyText) Wh")
         lines.append("平均功率：\(averageText) W")
         lines.append("峰值功率：\(peakText) W")
+        lines.append("平均电压：\(averageVoltageText) V（最大 \(peakVoltageText) V）")
+        lines.append("平均电流：\(averageCurrentText) A（最大 \(peakCurrentText) A）")
         lines.append("有效时长：\(activeDurationText)（总 \(totalDurationText)）")
         lines.append("电压区间：\(voltageText)，换档 \(stats.voltageChanges) 次")
         lines.append("采样：\(stats.sampleCount) 次")

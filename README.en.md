@@ -418,6 +418,12 @@ See [第三方组件许可.txt](第三方组件许可.txt) and [NOTICE](NOTICE) 
 This project is an **independent** C# implementation of the protocol spec reverse-engineered from them, with no code reused directly;
 should any be used later, the MIT license and copyright notice will be preserved.
 
+### Projects derived from this one
+
+* [a1287448852/CuktechMac10Ultra](https://github.com/a1287448852/CuktechMac10Ultra) — a macOS derivative (MIT) that went much further
+  on that platform: Liquid Glass, fully event-driven updates, a fixed-width menu bar item. The macOS side of this project
+  borrowed back a few of those ideas (reimplemented here, not copied) — see [NOTICE](NOTICE).
+
 ### Known limitations
 
 * Limited controls: only on / off for the four ports so far. Scene modes, screen-off time and language are PIIDs that have also been tested as writable, they simply have no UI yet
