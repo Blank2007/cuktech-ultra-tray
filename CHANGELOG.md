@@ -3,6 +3,27 @@
 这个项目最早只在我自己的一台电脑上跑，后来放到了 GitHub 上，所以下面是按「做过什么」整理的，
 版本号一路加到这里，方便对上安装包里的文件版本。
 
+## macOS 0.1.1 — 2026-11-25
+
+macOS 版单独发一版：**0.1.0 在真机上压根连不上充电器**，问题出在广播解析。
+感谢 [@editwe](https://github.com/editwe) 的 PR [#2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2)：
+根因定位准确，还附了用真机字节写的回归测试。Windows 版这一版**没有任何改动**，仍然是 0.4.6。
+
+- **修好连不上**：`MiBeaconAdvertisement.parse` 原先把 `95 FE`（服务 UUID 头）当成必需的前两字节，
+  而 macOS 通过 `CBAdvertisementDataServiceDataKey` 交过来的是**裸 payload**
+  （`10 59 | 0E 66 | 00 | 30 8B 31 73 CD 3C` = 帧控制 / productId / 计数 / MAC 小端），
+  guard 永远失败 → 扫描结果恒为空，表现就是状态栏一直 `—`、日志反复刷「扫不到 MAC 为 … 的广播」。
+  现在两种布局都接受，MAC 仍按帧控制 bit4 判断有没有带
+- 首次启动等蓝牙就绪 **10 秒 → 30 秒**：授权弹窗没点掉之前 state 一直是 unknown，
+  10 秒太紧，用户刚看到弹窗就被判「连不上」进入退避
+- **左键点状态栏直接开面板、右键才弹菜单**（原先 menu 挂死在 statusItem 上，左键只能弹菜单，与 README 写的不一致）
+- 应用图标改成**构建时现画**（`mac/scripts/make-icon.swift` → `iconutil` 打成 `.icns`），仓库里不放二进制；
+  渐变逐行填纯色而不是用 NSGradient/CGGradient，后者的抖动会把 icns 从 132 KB 撑到 1.2 MB
+- 新增 `Tests/CuktechBleTests`（真机字节做的广播解析回归，含带/不带 UUID 头、缺 MAC 位、截断四种情况）；
+  **CI 的 macOS job 现在也跑 `swift test` 了**——之前只有 Linux job 跑测试，而这组测试只能在 macOS 上编，
+  等于写完永远不会执行
+- mac/README 补「出问题了看这里」排查表（9 条常见症状 → 原因）
+
 ## 0.4.6 — 2026-11-25
 
 修一个真实用户碰到的 bug：**扫码配对成功后，向导上直接显示一句英文**

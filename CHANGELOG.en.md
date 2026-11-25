@@ -4,6 +4,31 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.1 — 2026-11-25
+
+A macOS-only release: **0.1.0 could not connect to the charger at all on real hardware**, and the bug was in the
+advertisement parser. Thanks to [@editwe](https://github.com/editwe) for PR
+[#2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2) — correct root cause plus a regression test built from
+bytes captured off a real device. **Windows is untouched in this release** and stays on 0.4.6.
+
+- **Fixed the connection failure**: `MiBeaconAdvertisement.parse` required the first two bytes to be `95 FE`
+  (the service-UUID header), but macOS hands over the **bare payload** through
+  `CBAdvertisementDataServiceDataKey` (`10 59 | 0E 66 | 00 | 30 8B 31 73 CD 3C` = frame control / productId /
+  counter / little-endian MAC), so the guard always failed and the scan result stayed empty — the menu bar showed
+  `—` forever while the log kept saying "no advertisement for MAC …". Both layouts are accepted now; the MAC bit in
+  the frame control is still what decides whether a MAC is present
+- Bluetooth readiness wait on first launch **10 s → 30 s**: state stays `unknown` until the permission dialog is
+  dismissed, and 10 s was tight enough that users were declared "can't connect" right as the dialog appeared
+- **Left click on the menu bar opens the panel, right click shows the menu** (the menu used to be attached to the
+  status item, so left click could only ever show the menu — the opposite of what the README says)
+- The app icon is now **drawn at build time** (`mac/scripts/make-icon.swift` → `iconutil` → `.icns`); no binary in
+  git. The gradient fills solid colour row by row instead of using NSGradient/CGGradient, whose dithering bloated the
+  icns from 132 KB to 1.2 MB
+- New `Tests/CuktechBleTests` (advertisement-parsing regressions from real-device bytes: with/without the UUID
+  header, MAC bit clear, truncated); **the macOS CI job now runs `swift test` too** — previously only the Linux job
+  ran tests, and this suite only compiles on macOS, so it would never have executed
+- mac/README gained a "troubleshooting" table (nine symptoms → cause)
+
 ## 0.4.6 — 2026-11-25
 
 Fixes a bug a real user hit: **right after a successful QR pairing the wizard showed the English sentence**

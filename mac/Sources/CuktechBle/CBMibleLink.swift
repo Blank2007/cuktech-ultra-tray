@@ -15,18 +15,23 @@ public struct MiBeaconAdvertisement: Equatable, Sendable {
         mac.map { String(format: "%02X", $0) }.joined(separator: ":")
     }
 
-    /// 解析 0xFE95 服务数据（不含 CBUUID 头的裸 payload）。
-    ///   95 FE | frame control(2, LE) | productId(2, LE) | counter | MAC(6, 小端) ...
+    /// 解析 0xFE95 服务数据。
+    ///   帧控制(2, LE) | productId(2, LE) | 计数(1) | MAC(6, 小端) [| 能力位/对象...]
+    /// macOS 交过来的是**不带服务 UUID 头**的裸 payload，这里也兼容多带 `95 FE` 的情况。
     public static func parse(serviceData: Data) -> MiBeaconAdvertisement? {
-        let b = [UInt8](serviceData)
-        guard b.count >= 13 else { return nil }
-        guard b[0] == 0x95 && b[1] == 0xFE else { return nil }
-        let frameCtrl = UInt16(b[2]) | (UInt16(b[3]) << 8)
-        let hasMac = (frameCtrl >> 4) & 1 == 1
-        guard hasMac else { return nil }
-        let productId = UInt16(b[4]) | (UInt16(b[5]) << 8)
-        let counter = b[6]
-        let macLe = Array(b[7..<13])
+        var b = [UInt8](serviceData)
+        // CoreBluetooth 交给我们的就是裸 payload（实测这台机器是
+        // `10 59 | 0E 66 | 00 | 30 8B 31 73 CD 3C`，前两字节是帧控制而不是 95 FE）。
+        // 但个别环境会把 2 字节 UUID 头一起塞进来，所以两种布局都接受。
+        if b.count >= 2 && b[0] == 0x95 && b[1] == 0xFE {
+            b.removeFirst(2)
+        }
+        guard b.count >= 11 else { return nil }
+        let frameCtrl = UInt16(b[0]) | (UInt16(b[1]) << 8)
+        guard (frameCtrl >> 4) & 1 == 1 else { return nil }   // 只有置位时后面才带 MAC
+        let productId = UInt16(b[2]) | (UInt16(b[3]) << 8)
+        let counter = b[4]
+        let macLe = Array(b[5..<11])
         return MiBeaconAdvertisement(mac: macLe.reversed(), productId: productId, frameCounter: counter)
     }
 }
@@ -100,7 +105,14 @@ public final class CBMibleLink: NSObject, MibleLink, @unchecked Sendable {
         lock.lock(); targetMAC = mac; found = nil; foundAdv = nil; connected = false
         servicesDiscovered = false; charsDiscovered = false; chars.removeAll(); lock.unlock()
 
-        try await waitUntil(10) { self.readState() == .poweredOn }
+        // 第一次启动时系统会弹「允许使用蓝牙」，弹窗没点掉之前 state 一直是 unknown，
+        // 这里等 30 秒（而不是 10 秒），免得用户刚看到弹窗就被判定“连不上”进入退避。
+        log("等蓝牙就绪（首次会弹权限框，请点“允许”）")
+        do {
+            try await waitUntil(30) { self.readState() == .poweredOn }
+        } catch {
+            throw CBLinkError.bluetoothUnavailable("蓝牙 30 秒内没就绪，检查「系统设置 → 隐私与安全性 → 蓝牙」是否允许了本程序")
+        }
         log("蓝牙就绪，开始扫描")
 
         lock.lock(); central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil); lock.unlock()
