@@ -23,6 +23,15 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 * Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself
 * Tens of MB resident, sits quietly in the tray — no popups, no desktop clutter
 
+> 🍎 **The macOS build lives in [`mac/`](mac/README.md)**: same protocol, same colour rules, except the number goes into the
+> menu bar (a system `NSStatusItem`, not a hand-drawn overlay), in pure Swift — the .app is about 1 MB. Feature parity:
+> menu-bar total power, the four-port panel with per-port switches, the QR pairing wizard, C3+A shown as one merged port,
+> and the **privacy notice you must accept on first launch** (same as Windows).
+> The Bluetooth code is fully independent of the UI and its tests run on Linux. macOS has its own version line starting at
+> **0.1.0** instead of following Windows 0.4.x — it is **0.1.2** right now.
+
+![macOS pairing wizard](docs/mac-wizard.png)
+
 ---
 
 > ### 🤖 The code in this repository was written by AI
