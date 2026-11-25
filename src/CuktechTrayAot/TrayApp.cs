@@ -61,6 +61,7 @@ internal sealed class TrayApp : WinBase
 
         _panel = new PanelWindow(_client, settings, ui);
         _panel.RestorePinned(settings.PanelPinned);
+        _panel.SetAlwaysOnTop(settings.PanelAlwaysOnTop);
         _panel.PinChanged += OnPinChanged;
 
         // 任务栏里那一小块实时功率
@@ -333,6 +334,17 @@ internal sealed class TrayApp : WinBase
         LogSink.Write("[panel] pinned=" + _panel.Pinned);
     }
 
+    /// <summary>
+    /// 面板「始终在最前」。跟「固定面板到桌面」是两件事：那个只是不自动收起，
+    /// 这个是压在别的窗口上面，两个开关可以同时开。
+    /// </summary>
+    private void ToggleAlwaysOnTop()
+    {
+        _panel.ToggleAlwaysOnTop();
+        _settings.PanelAlwaysOnTop = _panel.AlwaysOnTop;
+        _settings.Save();
+    }
+
     private void TogglePanel()
     {
         if (_panel.Visible) { _panel.HideNow("toggle"); return; }
@@ -434,6 +446,7 @@ internal sealed class TrayApp : WinBase
             MenuEntry.Item("单口采集（按秒算电量）…", OpenCapture),
             MenuEntry.WithSub("充电模式", modeItems.ToArray()),
             MenuEntry.CheckItem("固定面板到桌面", _panel.Pinned, () => _panel.TogglePin()),
+            MenuEntry.CheckItem("面板始终在最前", _panel.AlwaysOnTop, ToggleAlwaysOnTop),
             MenuEntry.CheckItem("在任务栏显示功率", _widget is not null, ToggleTaskbarWidget),
             new MenuEntry { Text = posText, Enabled = _widget is not null, Click = ResetTaskbarPosition },
             MenuEntry.Dim(StatusLine()),

@@ -339,19 +339,24 @@ public sealed class MibleSession
         if (!await SendEncryptedAsync(plaintext, ct))
             return null;
 
-        return await ReceiveResponseAsync(siid, piid, value is not null, timeoutSec, ct);
+        return await ReceiveResponseAsync(siid, piid, timeoutSec, ct);
     }
 
-    private async Task<MiotMessage?> ReceiveResponseAsync(byte siid, ushort piid, bool isSet, double timeoutSec, CancellationToken ct)
+    /// <summary>
+    /// 等一条命令的回应。GET 等 get_result，SET 等 set_ack，拿到就立刻返回。
+    /// 以前 SET 收到 ack 后还要再等 1 秒「等一拍」，但那 1 秒没有任何用处：
+    /// 调用方（DeviceClient 的各路开关）本来就紧接着 GET 回读比对，
+    /// 多等的这一拍只是把每次开关都拖慢一秒。0.5.1 起与 macOS 0.1.6 对齐，收到 ack 即返。
+    /// </summary>
+    private async Task<MiotMessage?> ReceiveResponseAsync(byte siid, ushort piid, double timeoutSec, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSec);
-        bool gotAck = false;
 
         while (DateTime.UtcNow < deadline)
         {
             var remaining = deadline - DateTime.UtcNow;
             var data = await ReadAsync(MibleChannel.CmdRecv, remaining < TimeSpan.FromSeconds(3) ? remaining : TimeSpan.FromSeconds(3), ct);
-            if (data is null) { if (gotAck) break; continue; }
+            if (data is null) continue;
 
             var msg = await DecodeInlineAsync(data, ct);
             if (msg is null) continue;
@@ -359,19 +364,12 @@ public sealed class MibleSession
             if (msg.Siid == siid && msg.Piid == (byte)(piid & 0xFF))
             {
                 if (msg.IsGetResult) return msg;
-                if (msg.IsSetAck)
-                {
-                    if (isSet) { gotAck = true; deadline = DateTime.UtcNow.AddSeconds(1); continue; }
-                    return msg;
-                }
+                // SET 的 ack：立刻返回，不再多等一拍
+                if (msg.IsSetAck) return msg;
             }
             if (msg.IsPush) PushReceived?.Invoke(msg);
         }
-        return gotAck ? new MiotMessage
-        {
-            Raw = Array.Empty<byte>(), Opcode = 0x01, Seq = 0, Siid = siid, Piid = (byte)(piid & 0xFF),
-            ValueBytes = Array.Empty<byte>(),
-        } : null;
+        return null;
     }
 
     /// <summary>解密一条 cmd_recv 通知：内联单帧(0x02) 或多帧(0x00)。</summary>

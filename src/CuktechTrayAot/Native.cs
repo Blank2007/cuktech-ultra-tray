@@ -556,6 +556,7 @@ internal static class Native
     internal const int SW_SHOWNA = 8;
     internal const int SW_SHOWNORMAL = 1;
     internal const int HWND_TOPMOST = -1;
+    internal const int HWND_NOTOPMOST = -2;
     internal const uint ULW_ALPHA = 0x00000002;
     internal const byte AC_SRC_OVER = 0;
     internal const byte AC_SRC_ALPHA = 1;

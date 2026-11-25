@@ -74,6 +74,12 @@ internal sealed class PanelWindow : WinBase
     public int AutoHideAfterMs { get; set; }
     public bool SuppressAutoHide { get; set; }
     public bool Pinned { get; private set; }
+
+    /// <summary>
+    /// 面板是否「始终在最前」。跟 Pinned 互相独立：Pinned 只是「不自动收起」，
+    /// 这个是压在别的窗口上面；两个可以同时开（固定住、又始终在最前）。
+    /// </summary>
+    public bool AlwaysOnTop { get; private set; }
     public Tab CurrentTab => _tab;
 
     /// <summary>最近一次自动收起的时间。点托盘图标的瞬间常常先触发一次「失焦收起」，
@@ -714,6 +720,36 @@ internal sealed class PanelWindow : WinBase
         SuppressAutoHide = value;
     }
 
+    /// <summary>
+    /// 置顶开关。置顶是窗口的一个持久样式，跟显示/隐藏无关，所以这里直接落一次即可；
+    /// 每次 ShowAt 里会再落一次，防止某些显示路径把 Z 序拉回去。
+    /// </summary>
+    /// <param name="toast">true = 在页脚提示一句（用户主动切换时）；启动时按配置恢复就不吵。</param>
+    public void SetAlwaysOnTop(bool value, bool toast = false)
+    {
+        bool changed = AlwaysOnTop != value;
+        AlwaysOnTop = value;
+        ApplyTopMost();
+        if (changed)
+        {
+            LogSink.Write("[panel] alwaysOnTop=" + value);
+            if (toast) FootOverride(value ? "面板已置顶，会压在其他窗口上面" : "已取消置顶，会被其他窗口盖住");
+        }
+        Invalidate();
+    }
+
+    public void ToggleAlwaysOnTop() => SetAlwaysOnTop(!AlwaysOnTop, toast: true);
+
+    /// <summary>只改 Z 序：不移动、不改大小、不抢焦点。</summary>
+    private void ApplyTopMost()
+    {
+        if (!IsValid) return;
+        Native.SetWindowPos(Hwnd,
+            new IntPtr(AlwaysOnTop ? Native.HWND_TOPMOST : Native.HWND_NOTOPMOST),
+            0, 0, 0, 0,
+            Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+    }
+
     private void FootOverride(string text, double seconds = 3.0)
     {
         _footOverride = text;
@@ -834,6 +870,7 @@ internal sealed class PanelWindow : WinBase
         _shownAt = DateTime.UtcNow;
         _awayTicks = 0;
         Native.ShowWindow(Hwnd, Native.SW_SHOW);
+        if (AlwaysOnTop) ApplyTopMost();   // 显示之后再压一次，别被这次显示把 Z 序带回普通层
         if (!Pinned)
         {
             Native.SetForegroundWindow(Hwnd);
@@ -849,6 +886,7 @@ internal sealed class PanelWindow : WinBase
         _shownAt = DateTime.UtcNow;
         _awayTicks = 0;
         Native.ShowWindow(Hwnd, Native.SW_SHOW);
+        if (AlwaysOnTop) ApplyTopMost();
         if (!Pinned)
         {
             Native.SetForegroundWindow(Hwnd);

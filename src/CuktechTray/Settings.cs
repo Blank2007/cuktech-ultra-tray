@@ -40,6 +40,12 @@ internal sealed class Settings
     public int PanelX { get; set; } = int.MinValue;
     public int PanelY { get; set; } = int.MinValue;
 
+    /// <summary>
+    /// 面板是否「始终在最前」（压在其他窗口上面）。与 PanelPinned 是两件事：
+    /// 那个是「固定到桌面、不自己收起」，这个是 Z 序，两个开关可以同时开。
+    /// </summary>
+    public bool PanelAlwaysOnTop { get; set; }
+
     /// <summary>任务栏里是否显示一块实时功率小窗。</summary>
     public bool TaskbarWidget { get; set; } = true;
 

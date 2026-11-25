@@ -22,7 +22,7 @@ internal sealed class CaptureWindow : WinBase
 {
     // ---- 设计尺寸（96 DPI 下的逻辑像素）----
     private const int DesignW = 360;
-    private const int DesignH = 440;
+    private const int DesignH = 482;
     private const int PadX = 24;
     private const int TitleY = 20;
     private const int SubY = 48;
@@ -35,16 +35,27 @@ internal sealed class CaptureWindow : WinBase
     private const int BigX = 40;           // 卡片内左侧留 16
     private const int BigY = 134;
     private const int ProgY = 192;         // 「已采 N 次 · 有效 X 秒」放在卡片内部下沿
-    private const int RowTop = 216;        // 卡片底 222，六行从这里开始
-    private const int RowH = 20;           // 6×20=120 → 336，上面要留出状态行(340)和按钮(374)
-    private const int StatusY = 344;   // 六行结果到 336，留 8px 再放状态行，往上贴太近
+    private const int RowTop = 228;        // 卡片底 222，能量行从这里开始
+    private const int RowH = 20;
+    private const int HeadY = 256;         // 「平均 / 最大」两列表头（字号比数据小一号）
+    private const int HeadH = 16;
+    private const int TableTop = 276;      // 电压 / 电流 / 功率三行，行距同上
+    private const int ChangesY = 344;      // 换档次数（换过档就把电压区间带在后面）
+    private const int ReasonY = 364;       // 结束原因
+    private const int StatusY = 392;   // 结果区到 384，留 8px 再放状态行
     private const int BtnH = 42;
-    private const int BtnY = DesignH - 24 - BtnH;   // 374
+    private const int BtnY = DesignH - 24 - BtnH;   // 416
     private const int BtnPrimaryW = 132;
     private const int BtnSecondW = 88;
     private const int BtnCloseW = 76;
     private const int BtnGap = 8;
     // 132+8+88+8+76 = 312 = DesignW-PadX*2：三个按钮正好填满一行，右下「关闭」右对齐到 336
+
+    // ---- 结果区：左边标签 + 右边「平均 / 最大」两列，两列共用一条右边线(336) ----
+    private const int LabelW = 120;                  // 标签 24..144
+    private const int ColW = 76;
+    private const int ColAvgRight = 258;             // 「平均」列右沿
+    private const int ColMaxRight = DesignW - PadX;  // 336，「最大」列右沿
 
     private const int TimerId = 1;
 
@@ -75,7 +86,7 @@ internal sealed class CaptureWindow : WinBase
 
     private enum StatusKind { Hint, Ok, Bad }
 
-    private static readonly string[] RowLabels = { "能量", "平均功率", "峰值", "电压区间", "换档次数", "结束原因" };
+    private static readonly string[] CellLabels = { "电压", "电流", "功率" };
 
     private readonly DeviceClient _client;
 
@@ -427,7 +438,7 @@ internal sealed class CaptureWindow : WinBase
 
         for (int i = 0; i < 4; i++) DrawPort(g, i);
         DrawCard(g);
-        DrawRows(g);
+        DrawStats(g);
         DrawStatus(g);
         DrawButtons(g);
     }
@@ -485,45 +496,116 @@ internal sealed class CaptureWindow : WinBase
         return "已采 " + st.SampleCount + " 次 · 有效 " + (int)st.EffectiveSeconds + " 秒";
     }
 
-    private void DrawRows(Graphics g)
+    private static void TextR(Graphics g, string? text, GdiFont font, Color color, int x, int y, int w, int h)
     {
-        int labelW = S(120);
-        int rowW = S(DesignW - PadX * 2);
-        for (int i = 0; i < RowLabels.Length; i++)
-        {
-            int y = S(RowTop + i * RowH);
-            Text(g, RowLabels[i], _fLabel, Faint, S(PadX), y, labelW, S(RowH));
-            string v = RowText(i);
-            bool real = v != "—" && v != "采集中…" && v != "样本太少";
-            GdiText.Draw(g, v, _fValue, real ? Fg : Faint,
-                new Rectangle(S(PadX), y, rowW, S(RowH)), TextAnchor.Right, ellipsis: true);
-        }
+        if (string.IsNullOrEmpty(text)) return;
+        GdiText.Draw(g, text, font, color, new Rectangle(x, y, w, h), TextAnchor.Right, ellipsis: true);
+    }
+
+    /// <summary>一个数据格子：真值用 Fg，没有读数（「—」）用 Faint，跟原来六行那套配色一致。</summary>
+    private void DrawValue(Graphics g, string? v, int x, int y, int w, int h)
+    {
+        if (string.IsNullOrEmpty(v)) return;
+        bool real = v != CaptureFormat.None && v != "采集中…" && v != "样本太少";
+        GdiText.Draw(g, v, _fValue, real ? Fg : Faint, new Rectangle(x, y, w, h), TextAnchor.Right, ellipsis: true);
     }
 
     /// <summary>
-    /// 六行结果。有结果就照 CaptureResult 的文字原样用（它已经处理好单位与「—」）；
-    /// 采集中的能量行给实时值 —— 但样本不足 2 个时写「采集中…」而不是 0.00 Wh：
+    /// 结果区：上面一行能量，下面一张「平均 / 最大」两列小表格（电压、电流、功率），
+    /// 再下面两行单值（换档次数、结束原因）。三个量的「最大」都是带载样本里的最大值，
+    /// 功率那一列的最大值就是峰值功率 —— 也就是卡片下面以前单列的那些数，现在按量归到一列里好横向比。
+    /// </summary>
+    private void DrawStats(Graphics g)
+    {
+        int labelX = S(PadX);
+        int labelW = S(LabelW);
+        int colW = S(ColW);
+        int rowH = S(RowH);
+        int avgX = S(ColAvgRight - ColW);
+        int maxX = S(ColMaxRight - ColW);
+        // 单值行（能量 / 换档 / 结束原因）：从标签右边一直拉到 336，跟「最大」列收在同一条右边线上
+        int wideX = S(PadX + LabelW + 8);
+        int wideW = S(ColMaxRight - (PadX + LabelW + 8));
+
+        int y = S(RowTop);
+        Text(g, "能量", _fLabel, Faint, labelX, y, labelW, rowH);
+        DrawValue(g, EnergyText(), wideX, y, wideW, rowH);
+
+        // 表头比行标签再小半号、更淡一点，一眼能看出这两列是一组
+        TextR(g, "平均", _fStatus, Faint, avgX, S(HeadY), colW, S(HeadH));
+        TextR(g, "最大", _fStatus, Faint, maxX, S(HeadY), colW, S(HeadH));
+
+        for (int i = 0; i < CellLabels.Length; i++)
+        {
+            int ry = S(TableTop + i * RowH);
+            Text(g, CellLabels[i], _fLabel, Faint, labelX, ry, labelW, rowH);
+            DrawValue(g, CellText(i, 0), avgX, ry, colW, rowH);
+            DrawValue(g, CellText(i, 1), maxX, ry, colW, rowH);
+        }
+
+        int cy = S(ChangesY);
+        Text(g, "换档次数", _fLabel, Faint, labelX, cy, labelW, rowH);
+        DrawValue(g, ChangesText(), wideX, cy, wideW, rowH);
+
+        int ry2 = S(ReasonY);
+        Text(g, "结束原因", _fLabel, Faint, labelX, ry2, labelW, rowH);
+        DrawValue(g, ReasonText(), wideX, ry2, wideW, rowH);
+    }
+
+    /// <summary>
+    /// 能量行。有结果就照 CaptureResult 的文字原样用（它已经处理好单位与「—」）；
+    /// 采集中的能量给实时值 —— 但样本不足 2 个时写「采集中…」而不是 0.00 Wh：
     /// 刚点开始那一秒总不可能已经充了多少电，写 0.00 是误导。
     /// </summary>
-    private string RowText(int i)
+    private string EnergyText()
     {
         var res = Result;
-        var st = Stats;
-        bool tooFew = res is { } r && r.Stats.SampleCount < 2;
-        switch (i)
+        if (Capturing)
+            return Stats is { SampleCount: >= 2 } st ? st.EnergyWh.ToString("0.00") + " Wh" : "采集中…";
+        if (res is null) return CaptureFormat.None;
+        if (res.Stats.SampleCount < 2) return "样本太少";
+        return res.EnergyText + " Wh";
+    }
+
+    /// <summary>换档次数。真换过档才把电压区间带在后面：「换档 0 次（9.0V）」这种话没信息量。</summary>
+    private string ChangesText()
+    {
+        var res = Result;
+        if (res is not null)
         {
-            case 0:
-                if (Capturing)
-                    return st is { SampleCount: >= 2 } ? st.EnergyWh.ToString("0.00") + " Wh" : "采集中…";
-                if (res is null) return "—";
-                if (tooFew) return "样本太少";
-                return res.EnergyText + " Wh";
-            case 1: return res is null || tooFew ? "—" : res.AverageText + " W";
-            case 2: return res is null || tooFew ? "—" : res.PeakText + " W";
-            case 3: return res?.VoltageText ?? "—";
-            case 4: return res is null ? "—" : res.Stats.VoltageChanges + " 次";
-            default: return res?.ReasonText ?? "—";
+            string n = res.Stats.VoltageChanges + " 次";
+            return res.SpansRails ? n + "（" + res.VoltageText + "）" : n;
         }
+        return Capturing && Stats is { } st ? st.VoltageChanges + " 次" : CaptureFormat.None;
+    }
+
+    private string ReasonText() => Result?.ReasonText ?? CaptureFormat.None;
+
+    /// <summary>
+    /// 表格里的一格：row 0/1/2 = 电压/电流/功率，col 0/1 = 平均/最大。
+    /// 有结果就走 CaptureResult 的文案（同一套 CaptureFormat 口径），采集中直接读累加器的实时值；
+    /// 样本不足两个就一律「—」，别让「0.00 V」骗人。
+    /// </summary>
+    private string CellText(int row, int col)
+    {
+        var res = Result;
+        if (res is not null)
+        {
+            if (res.Stats.SampleCount < 2) return CaptureFormat.None;
+            return row switch
+            {
+                0 => col == 0 ? res.AverageVoltageText : res.PeakVoltageText,
+                1 => col == 0 ? res.AverageCurrentText : res.PeakCurrentText,
+                _ => col == 0 ? res.AverageText + " W" : res.PeakText + " W",
+            };
+        }
+        if (!Capturing || Stats is not { SampleCount: >= 2 } live) return CaptureFormat.None;
+        return row switch
+        {
+            0 => col == 0 ? CaptureFormat.Voltage(live.AverageVoltage) : CaptureFormat.Voltage(live.MaxVoltage ?? 0),
+            1 => col == 0 ? CaptureFormat.Current(live.AverageCurrent) : CaptureFormat.Current(live.PeakCurrent),
+            _ => col == 0 ? CaptureFormat.Power(live.AveragePower) : CaptureFormat.Power(live.PeakPower),
+        };
     }
 
     private void DrawStatus(Graphics g)
