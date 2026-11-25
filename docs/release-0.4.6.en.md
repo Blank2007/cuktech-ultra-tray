@@ -4,7 +4,7 @@
 
 In one line: a bug only reachable through real use — **right after a successful QR pairing the wizard showed the English sentence**
 `Reflection-based serialization has been disabled for this app`. This release also adds a privacy note to the wizard and the README,
-and macOS starts its own version line.
+starts macOS on its own version line, and thanks to @editwe ships a fixed "pairs but never connects" bug on macOS.
 
 ## What changed
 
@@ -29,11 +29,19 @@ and macOS starts its own version line.
 * Power readings and port switching go over Bluetooth with no network; **only an explicit "Check for updates" contacts GitHub**
 * No uploads, no telemetry, no background service; uninstalling leaves nothing behind
 
-### macOS: 0.1.0 (own version line from here on)
+### macOS: 0.1.1 (own version line from here on)
 
-macOS no longer shares the Windows version number and starts at **0.1.0**: `CuktechTray-0.1.0-mac.zip`.
+macOS no longer shares the Windows version number and starts at **0.1.0**: `CuktechTray-0.1.1-mac.zip`.
 The two platforms move at different speeds, and one shared number only mixes unrelated changelog entries.
-macOS also got the privacy note in this release (a paragraph on the welcome screen plus a full-note dialog); see [mac/README.md](../mac/README.md).
+
+**0.1.1 fixes a real 0.1.0 bug**: pairing finished but the menu bar kept showing "—" and the log filled up with
+"扫不到 MAC 为 … 的广播" (no advertisement with that MAC). macOS hands out a bare payload through
+`CBAdvertisementDataServiceDataKey`, while the old code waited for the two-byte `95 FE` service-UUID prefix the Windows
+side uses, so parsing always failed — nothing to do with the charger or your Bluetooth permission, we simply parsed it wrong.
+
+This release also: waits 10 → 30 s for Bluetooth to come up (and says plainly when the permission is missing),
+left-click opens the panel / right-click shows the menu, draws its own icon at build time (no more generic icon in Finder),
+and mac/README gained a troubleshooting table. The privacy note is unchanged; see [mac/README.md](../mac/README.md).
 
 ### 0.4.5
 
@@ -56,7 +64,7 @@ macOS also got the privacy note in this release (a paragraph on the welcome scre
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.4.6-win.exe` | **10,882,048 bytes (10.38 MiB)** | Windows: portable build + installer in one; 2,560 bytes more than 0.4.5 (hand-written escaping + self-checks) |
-| `CuktechTray-0.1.0-mac.zip` | **911,811 bytes (890 KiB)** | macOS 13+: unpacks to `CuktechTray.app` (universal, Intel / Apple Silicon, ad-hoc signed), see [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.1-mac.zip` | **999,107 bytes (976 KiB)** | macOS 13+: unpacks to `CuktechTray.app` (universal, Intel / Apple Silicon, ad-hoc signed, icon included), see [mac/README.md](../mac/README.md) |
 
 ## Checksums
 
@@ -65,9 +73,9 @@ file   CuktechTray-0.4.6-win.exe   (the local build is called CuktechTray.exe, s
 size   10,882,048 bytes
 SHA256 BEF1F61D06DA270871DD4333FA39BEFD04EAE547D0F5DCB656F9F0A835BCF051
 
-file   CuktechTray-0.1.0-mac.zip   (universal build from macos-26-intel CI)
-size   911,811 bytes
-SHA256 42621A1F1D1E3FF6BE18542F4C15B5E636400119906272E3791AFEE5EDCECA8F
+file   CuktechTray-0.1.1-mac.zip   (universal build from macos-26-intel CI)
+size   999,107 bytes
+SHA256 7E32C32D0C029A4D6D7FE0665724F43CF21D273B4054ABAC186F9A6E09FABF44
 ```
 
 ## Requirements
@@ -81,5 +89,12 @@ SHA256 42621A1F1D1E3FF6BE18542F4C15B5E636400119906272E3791AFEE5EDCECA8F
 * The exe is **not code-signed**; the first run shows the blue SmartScreen box — "More info → Run anyway"
 * Auto-update only accepts release assets starting with `CuktechTray-`, ending in `.exe` and not containing `Setup`, so `-win.exe` matches and `-mac.zip` is never picked by the Windows side
 * The macOS bundle is **not notarized** (no Apple Developer account, ad-hoc signature only); right-click → Open the first time — see [mac/README.md](../mac/README.md)
-* macOS has its own version line from this release (0.1.0); don't compare it against the Windows 0.4.x numbers
+* macOS has its own version line from this release (currently 0.1.1); don't compare it against the Windows 0.4.x numbers
+* macOS 0.1.0 pairs fine but never connects — upgrade to 0.1.1; the Windows build has **no changes** in this release and stays 0.4.6
 * `--render*` / `--font-probe` / `--update-selftest` are development switches; ignore them in normal use
+
+## Thanks
+
+* [@editwe](https://github.com/editwe): [PR #2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2) found and fixed the root cause
+  behind "macOS never connects", and added the regression tests built from real advertisement bytes plus the build-time icon script.
+  Nearly all macOS changes in this release are his work

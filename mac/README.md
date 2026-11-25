@@ -181,6 +181,10 @@ mac/
 
 ---
 
+## 致谢
+
+- [@editwe](https://github.com/editwe)：[PR #2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2) —— macOS「配对成功但连不上」的根因（广播解析把 `95 FE` 服务 UUID 头当成必需的）是他定位并修好的，还补了用真机广播字节写的回归测试与构建时生成图标的脚本，0.1.1 的改动基本都是他的。
+
 ## 许可证
 
 [MIT](../LICENSE)。与小米、酷态科官方没有任何关系，是照公开资料和协议实测自己写的第三方小工具。

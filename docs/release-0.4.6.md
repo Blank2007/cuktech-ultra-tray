@@ -4,7 +4,7 @@
 
 一句话：修一个用户实际操作时才会撞到的坑——**扫码配对成功之后，向导上直接弹出一句英文**
 `Reflection-based serialization has been disabled for this app`。顺带把隐私说明写进了向导和 README，
-macOS 版从这一版起自己编号。
+macOS 版从这一版起自己编号，并且被社区顺手修好了「配对成功却连不上」那个 bug（感谢 @editwe）。
 
 ## 这次改了什么
 
@@ -29,11 +29,18 @@ macOS 版从这一版起自己编号。
 * 日常读功率、断/通端口全走蓝牙，不联网；**只有你主动点「检查更新」才会访问一次 GitHub**
 * 不上传读数、不做统计、不装后台服务；卸载后本机不留东西
 
-### macOS 版：0.1.0（从这一版起独立编号）
+### macOS 版：0.1.1（从这一版起独立编号）
 
-macOS 版不再跟 Windows 共用版本号，自己从 **0.1.0** 开始，产物名 `CuktechTray-0.1.0-mac.zip`。
+macOS 版不再跟 Windows 共用版本号，自己从 **0.1.0** 起算，产物名 `CuktechTray-0.1.1-mac.zip`。
 两个平台改动节奏不一样，绑同一个号只会让更新日志变成两边不相干的条目混在一起。
-这一版 macOS 端也加了隐私说明（欢迎页一段小字 + 「看完整的隐私说明」弹窗），说明见 [mac/README.md](../mac/README.md)。
+
+**0.1.1 修的是 0.1.0 的一个真 bug**：配对做完、菜单栏一直显示「—」，日志里刷「扫不到 MAC 为 … 的广播」。
+根因是 macOS 从 `CBAdvertisementDataServiceDataKey` 拿到的是裸 payload，而原代码按 Windows 那套等着前两字节
+`95 FE` 的服务 UUID 头，于是永远解析失败——跟充电器、跟你的蓝牙权限都没关系，纯粹是我们没解析对。
+
+这一版还顺带：蓝牙就绪等待 10 → 30 秒（权限没给会直接说清楚）、左键开面板 / 右键弹菜单、
+构建时自己画图标（Finder 里不再是通用图标）、mac/README 增加「出问题了看这里」排查表。
+隐私说明（欢迎页一段小字 + 「看完整的隐私说明」弹窗）也照旧，说明见 [mac/README.md](../mac/README.md)。
 
 ### 0.4.5
 
@@ -56,7 +63,7 @@ macOS 版不再跟 Windows 共用版本号，自己从 **0.1.0** 开始，产物
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.4.6-win.exe` | **10,882,048 字节（10.38 MiB）** | Windows：绿色版 + 安装器二合一；比 0.4.5 多 2,560 字节（手写转义 + 自检项） |
-| `CuktechTray-0.1.0-mac.zip` | **911,811 字节（890 KiB）** | macOS 13+：解压出 `CuktechTray.app`（universal，Intel / Apple Silicon 都能跑，ad-hoc 签名），说明见 [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.1-mac.zip` | **999,107 字节（976 KiB）** | macOS 13+：解压出 `CuktechTray.app`（universal，Intel / Apple Silicon 都能跑，ad-hoc 签名，自带图标），说明见 [mac/README.md](../mac/README.md) |
 
 ## 校验
 
@@ -65,13 +72,13 @@ macOS 版不再跟 Windows 共用版本号，自己从 **0.1.0** 开始，产物
 大小   10,882,048 字节
 SHA256 BEF1F61D06DA270871DD4333FA39BEFD04EAE547D0F5DCB656F9F0A835BCF051
 
-文件   CuktechTray-0.1.0-mac.zip   （CI 在 macos-26-intel 上编的 universal 包）
-大小   911,811 字节
-SHA256 42621A1F1D1E3FF6BE18542F4C15B5E636400119906272E3791AFEE5EDCECA8F
+文件   CuktechTray-0.1.1-mac.zip   （CI 在 macos-26-intel 上编的 universal 包）
+大小   999,107 字节
+SHA256 7E32C32D0C029A4D6D7FE0665724F43CF21D273B4054ABAC186F9A6E09FABF44
 ```
 
 Windows 用 `Get-FileHash .\CuktechTray-0.4.6-win.exe -Algorithm SHA256`、macOS 用
-`shasum -a 256 CuktechTray-0.1.0-mac.zip` 对着看；GitHub 的资产页也会直接显示 digest。
+`shasum -a 256 CuktechTray-0.1.1-mac.zip` 对着看；GitHub 的资产页也会直接显示 digest。
 
 ## 系统要求
 
@@ -84,5 +91,11 @@ Windows 用 `Get-FileHash .\CuktechTray-0.4.6-win.exe -Algorithm SHA256`、macOS
 * 这个 exe **没有代码签名**，首次运行会弹蓝色的「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」即可
 * 自动更新只认名字以 `CuktechTray-` 开头、以 `.exe` 结尾、且不含 `Setup` 的发布资产，所以 `-win.exe` 天然符合、`-mac.zip` 不会被误选
 * macOS 包**没有公证**（没有 Apple 开发者账号，只有 ad-hoc 签名），第一次打开要右键 → 打开，细节见 [mac/README.md](../mac/README.md)
-* macOS 版从这一版起版本号独立（0.1.0），升级时别拿 Windows 的 0.4.x 去对
+* macOS 版从这一版起版本号独立（当前 0.1.1），升级时别拿 Windows 的 0.4.x 去对
+* macOS 0.1.0 会「配对成功但连不上」，升级到 0.1.1 就好；Windows 版这一版**没有任何改动**，仍是 0.4.6
 * `--render*` / `--font-probe` / `--update-selftest` 这些是开发自查用的开关，正常使用不用管
+
+## 致谢
+
+* [@editwe](https://github.com/editwe)：[PR #2](https://github.com/Blank2007/cuktech-ultra-tray/pull/2) 修好了 macOS 连不上设备的根因，
+  还补上了用真机广播字节写的回归测试，以及构建时生成图标的脚本。这一版 macOS 的变化基本都是他的功劳
