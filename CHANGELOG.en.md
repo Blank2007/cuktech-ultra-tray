@@ -4,6 +4,108 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.3 — 2026-11-25
+
+Merges the community [PR #4](https://github.com/Blank2007/cuktech-ultra-tray/pull/4) by
+[@editwe](https://github.com/editwe): the device settings panel, per-port capture, a pinnable panel and the
+About / update check, all in one go (he shipped them as three versions on his branch, 0.1.2 / 0.1.3 / 0.1.4).
+Everything lands as a single macOS **0.1.3** here, with his three changelog sections folded into this one.
+**Windows is untouched in this release.**
+
+### Device settings panel
+
+The panel footer's "设置" (or "设备设置…" in the right-click menu) opens a window with the things that used to
+require the Mi Home app; edits are written straight to the charger and stay in sync there:
+
+- **Screen**: screen-off timeout (1/5/10/30 minutes, always on), idle screen-off, orientation lock
+- **Power**: USB-A low-current mode; per-port **fast-charge protocol switches** (C1/C2: PD / PPS / UFCS,
+  C3/A: UFCS / SCP) — turning one off tells the charger not to negotiate that protocol
+- **Countdown**: 15/30 minutes, 1/2/4 hours per port, cutting that port automatically (0 = off)
+- Each port also shows the **protocol and wattage actually negotiated right now** (PIID 17/18, e.g. "PD 70W"),
+  which is what explains the switches above it
+
+The panel reads every item with its **own GET and leaves it empty when unanswered**: firmwares differ in what
+they support, so the UI says "设备没答这一项" and disables that control. An unanswered read is **never** treated
+as "off" — that would make people think the value is 0 and write an unknown value on the first click. The
+protocol switches (PIID 21) are a 32-bit mask and, like the port switches, are **read-modify-written**: the
+baseline is read first and the write is refused if it fails (so other ports / protocols are not switched off by
+accident), then read back and compared — an ACK alone does not count as success.
+
+### Per-port capture
+
+- Every port row has a **waveform button**: one click starts reading that port once a second; the header shows
+  elapsed time, Wh so far and average watts live, the button turns red, another click stops it
+- Capture **ends** after 30 s with no output from that port, 30 s with no data at all, a dropped link, or a
+  manual stop. A small window then shows Wh, average and peak power, active duration, voltage range with
+  rail-change count, and sample count. The numbers live **in memory only** — closing the window discards them,
+  nothing is written to disk or to the log
+- **Sample counts add up now**: 30 seconds used to yield only 25 samples, because each round was
+  "sample, then sleep 1 s" while one GET round trip takes 0.1–0.3 s, making a round 1.2 s. Ticks are now
+  scheduled at absolute times (sample n lands n seconds after the start) and the end check moved ahead of the
+  sample, so 30 s is exactly 30 samples
+- Energy is **integrated per rail**: trapezoidal while the voltage stays put, and on a rail change the power
+  from *before* the step is used for that last second. Averaging 5V→20V as 12.5V would overstate that second
+  by more than double; the conservative choice under-reports slightly but never inflates
+
+### Panel, menu bar and About
+
+- **The panel can be pinned**: a pin in the top right corner. Unpinned it closes when you click outside;
+  pinned it stays through app switches as a small always-on widget
+- "Click outside closes it" got a safety net: `.transient` relies on the popover window resigning key, but a
+  menu bar app often **is not active** when its panel opens, so that event never arrives and the panel sticks
+  around. Mouse-down events are now watched as well (one global, one local), with the status item's own rect
+  excluded so "close it" is not first treated as "clicked outside" and then reopened on mouseUp
+- **Clicking the status item again closes the panel** instead of opening it twice (no flash)
+- The panel got tighter — the empty gap at the bottom is gone and the height drops from 486 to 424 — and gained
+  an **About** entry in the footer ("重新连接" on the left, "关于 / 退出" on the right); the right-click item
+  became simply "关于"
+- With "menu bar shows the wattage" turned off, the menu bar shows a **bolt icon** instead of a "W"
+  (SF Symbol `bolt.fill` + `isTemplate`, so it inverts on light and dark menu bars); hovering still shows
+  the live reading
+- The About window carries the version, the GitHub link and the **update check**: it holds only the version and
+  two buttons, and **only pressing "检查更新" unfolds the result row** (top edge stays put, the window grows
+  downward) with an inline "Download" when a newer build exists. **Opening the window sends no request**; one
+  GitHub request happens only on that click (the unauthenticated API allows 60 requests per hour per IP, and
+  an automatic check would burn that quota just to glance at a version number). It compares the release asset
+  name `CuktechTray-<version>-mac.zip` and **ignores the tag** — tags follow the Windows version (v0.4.x), so
+  comparing tags would report "new version available" on every check; on a 403 it converts
+  `x-ratelimit-reset` into local time and says when to retry
+- One "looks broken" detail fixed: right after the panel opens and before the app is active, the system switch
+  renders as an **inactive grey-green** and only turns blue after a click inside the panel. The switch is drawn
+  by us now, so its colour no longer depends on window activation
+- **The polling interval moved to the footer**: it used to sit on the right of the "charging mode" header
+  ("every 1 s"), and two unrelated things on one line read as "the charging mode switches every second". It is
+  the app's own refresh rate, nothing to do with the charger, so it now sits next to "重新连接" and says
+  "读数 1 秒"; the header instead says "点一下切换", making it clear those four tiles are buttons rather than
+  live indicators. Changes apply immediately and are written back to `pollInterval` in `config.json`
+- The current mode also gets a **check mark** next to the green border, so it reads as the charger's current
+  gear rather than a button you just pressed. "Does the gear switch by itself?" was checked too: two screenshots
+  five seconds apart are pixel-identical, firmware 2.1.2_0079 does not change it on its own
+
+### Two things that had to be settled while merging
+
+- PR #4 brought its own channel lock (`channelBusy` plus a 20 ms spin-retry) on top of the
+  `DeviceSession.withTransactionLock(urgent:)` / `AsyncCommandMutex` pair from 0.1.2 (PR #3). Two locks mean
+  two independent queues for the same command channel, so PR #4's lock was removed entirely and everything goes
+  through the 0.1.2 one: UI writes (switches / modes / settings / protocols) take the urgent path together with
+  `urgentControlCount` (checked before every polled read, so a user click gets out of the way immediately),
+  while polling and each capture tick queue in the background. A lock body only ever sends one command, so
+  there is no nested acquisition and no chance of self-deadlock
+- PR #4's `TrayController.setPort` took 1..4 and subtracted 1, while the 0.1.2 panel already passes
+  `PortSlot.zeroBasedIndex` (0..3). Stacked together that meant "clicking C1 switches C2" and "clicking A
+  reports the port index must be 0~3". The merged code uses 0..3 end to end on the switch path; capture still
+  uses 1..4 (`PortSlot.index`) because `DeviceSession.startCapture` works in 1..4
+
+### Tests and version
+
+- New `Tests/CuktechCoreTests/CaptureTests.swift` (integration, the rail-change second, the 30 s end
+  conditions) and `DeviceSettingsTests.swift` (protocol bit offsets, PIID 17/18 unpacking, and the inverted
+  screen-timeout values where 1 means 5 minutes and 5 means 1 minute)
+- New files: `Sources/CuktechCore/Capture.swift`, `DeviceSettings.swift`,
+  `Sources/CuktechTray/SettingsWindow.swift`, `AboutWindow.swift`, `CaptureResultWindow.swift`
+- Version 0.1.2 → **0.1.3**; the author's three original sections are on
+  [PR #4](https://github.com/Blank2007/cuktech-ultra-tray/pull/4)
+
 ## macOS 0.1.2 — 2026-11-25
 
 The macOS build catches up with the two Windows changes (merged ports, privacy consent) and **merges the community PR**.

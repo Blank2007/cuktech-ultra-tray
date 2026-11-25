@@ -8,6 +8,9 @@ public enum BuildInfo {
     /// 0.1.1：修 macOS 上连不上设备（MiBeacon 广播解析把 `95 FE` 头当必需，而 CoreBluetooth 给的是裸 payload）。
     /// 0.1.2：C3 与 A 合并成一路功率计时不再把另一路显示成「空载」；首次启动要先同意隐私说明；
     ///        合并 PR #3（端口开关索引错位、BLE 并发命令串行化、断连占线、浅色状态栏）。
-    public static let version = "0.1.2"
+    /// 0.1.3：并入社区 PR #4（@editwe）的 0.1.2~0.1.4——面板可固定、菜单栏图标模式、关于窗口 + 更新检查、
+    ///        设备设置面板（屏幕/供电/定时/快充协议）、单口电量采集、读数间隔挪到页脚；
+    ///        对方那套命令排队合成我们 0.1.2 的 withTransactionLock（不留两套锁）。
+    public static let version = "0.1.3"
     public static let channel = "mac"
 }
