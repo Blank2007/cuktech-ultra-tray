@@ -4,6 +4,56 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.1 — 2026-11-25
+
+Two things this round: the **per-port capture stats** now match macOS, and the panel gains an
+**always-on-top** switch. One wasted second also went away: toggling a port used to wait a full second
+before trusting the ACK.
+
+- **Capture gains average / peak columns** (`src/CuktechTrayAot/CaptureWindow.cs`, `src/CuktechTray/Capture.cs`):
+  voltage, current and power, average on the left, peak on the right. Until now only average power and a voltage
+  range were shown, so "how high did the current actually spike" meant staring at the live number
+- **Peak current only counts loaded samples**: the 5 V standby on an idle port no longer inflates it
+- **Average voltage / current share the power integration rule**: across a tier change the pre-jump value is used,
+  so average voltage x average current agrees with average power instead of inventing a 12.5 V midpoint
+- **Unplugging no longer counts as a tier change**: only two consecutive loaded samples differing by 0.5 V or more
+  are counted, so the tier counter stops over-reporting
+- **The voltage range only covers loaded samples**: idle 5 V and post-unplug 0 V stay out of min/max
+- Empty readings show "-" rather than `0.00` (thresholds 0.05 V / 0.005 A), and the summary gained average voltage
+  and average current lines
+- **Panel always on top** (tray menu -> "面板始终在最前"): the panel now stays above other windows. That is a
+  different thing from "pin panel to desktop", which only stops it auto-hiding; both checks can be on at once and
+  the state is stored as `PanelAlwaysOnTop` in `settings.json`
+- **Toggling a port waits one second less**: `src/CuktechMible/MibleSession.cs` returns as soon as the SET ACK
+  arrives. Measured locally, one mask write went from **1215 ms to 179 ms**; callers already read the value back,
+  so nothing about success detection changed
+- Version 0.5.0 -> **0.5.1**
+
+## macOS 0.1.6 — 2026-11-25
+
+This brings in the half of community member [@editwe](https://github.com/editwe)
+[PR #5](https://github.com/Blank2007/cuktech-ultra-tray/pull/5) that had not been merged yet (he filed it as 0.1.5
+and 0.1.6; 0.1.4 content went into 0.1.3 last round), plus a few interaction rewrites inspired by
+[@a1287448852](https://github.com/a1287448852) derivative [CuktechMac10Ultra](https://github.com/a1287448852/CuktechMac10Ultra)
+- see the credits below.
+
+- **Reconnection is steadier**: a single central, stale connections dropped before connecting, and during the scan
+  an already-connected charger is **adopted** via `retrieveConnectedPeripherals` (that case used to just time out),
+  with a second adoption attempt after the scan timeout
+- **Wake from sleep reconnects**: a `NSWorkspace.didWakeNotification` observer reconnects on its own
+- **`peripheralId` is remembered** so the same charger is found by identifier instead of guessed from RSSI; the field
+  must be optional, otherwise an old `config.json` fails to decode and wipes the stored MAC and token
+- **Capture gains average / peak voltage and current**, same rules as Windows 0.5.1, and the result window now shows
+  two columns; `--capture-demo` renders a sample result
+- **Panel always on top**: a tray menu check sets `NSWindow.level = .floating`, independent of pinning
+- **The menu bar item stops jittering**: fixed 58 pt width plus a content-fingerprint redraw (only redraws when the
+  reading or colour actually changes). Previously a one-digit change shifted it, and `mac/README.md` had even
+  documented that as "do not raise the font size" - now it is described as it is. The tray menu can turn it off
+- **Glass panel**: `NSGlassEffectView` on macOS 26, falling back to a vibrancy view on 13-15; only the panel
+  background changes, and the tray menu can turn it off (on by default)
+- Version 0.1.3 -> **0.1.6**; the `Capture` tests cover the new rules (unplug is not a tier change, cross-tier
+  average voltage 11.75, ...)
+
 ## 0.5.0 — 2026-11-25
 
 The features in this release came from someone else. Community member

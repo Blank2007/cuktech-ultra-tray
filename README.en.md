@@ -55,7 +55,8 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
 | 🎚️ **Device settings** | Tray menu -> "Device settings": screen timeout, idle screen-off, orientation lock, screen language, per-port countdown shutoff, USB-A low-current mode and per-port fast-charge protocols. Anything that cannot be read is dimmed and unclickable - "not read" is never shown as "off" |
-| ⏱️ **Per-port capture** | Tray menu -> "Per-port capture": sample one port every second and get Wh, average, peak and voltage changes for that session when you stop |
+| ⏱️ **Per-port capture** | Tray menu -> "Per-port capture": sample one port every second and, on stop, get Wh, average / peak voltage, current and power, the voltage range and how many tier changes there were; averages divide by the seconds that actually delivered power |
+| 📌 **Panel that stays on top** | Tray menu -> "Always on top": the panel stays above other windows. Different from "Pin panel to desktop", which only stops it auto-hiding; both can be on |
 | 💬 **About** | Tray menu -> "About": version, project page and who helped with this release. Opening it sends no request at all; only "Check for updates" touches the network |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
@@ -208,6 +209,8 @@ Tray menu -> "Device settings". This page changes **the charger's own settings**
 Tray menu -> "Per-port capture". Pick C1 / C2 / C3 / A, press "Start capture", it samples that port once a second, and "Stop" gives you the result:
 
 * **Wh**, **average power** (divided by the seconds that actually delivered power, not by total time), **peak**, **voltage range** and **voltage changes**
+* Voltage, current and power each get an **average / peak** pair of columns. Peak current only counts loaded samples, so an idle port's 5 V standby does not inflate it, and empty readings show "-" instead of `0.00`
+* Average voltage and current share the power integration rule (across a tier change the pre-jump value is used), so average voltage x average current agrees with average power. The voltage range only covers loaded samples, so the 0 V after unplugging stays out of min/max
 * The integration is conservative: trapezoidal inside one voltage tier; on a tier change (5 V -> 20 V) that second uses the pre-jump power, because averaging would invent a 12.5 V state that never existed and roughly double the energy
 * Gaps longer than 4 s are skipped rather than filled in, so the total cannot grow out of nowhere
 * 30 s with no output, or 30 s without readings, ends the capture on its own and tells you which one it was
@@ -249,10 +252,11 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
 * The program has no main window; it just lives in the tray. On startup it pops the panel once in the bottom right corner (numbers start flowing after about 4 s of authentication) and tucks it away if nobody touches it for 12 s
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
-* The full context menu: Show power panel / Show control page / Device settings / Per-port capture / Charge mode / Pin panel to desktop /
+* The full context menu: Show power panel / Show control page / Device settings / Per-port capture / Charge mode / Pin panel to desktop / Always on top /
   Show power on taskbar / Reset taskbar digits position / Reconnect / Check for updates / About / Install on this PC (Uninstall from this PC) /
   Start with Windows / Open log / Settings file / Exit
-* In that menu, "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
+* In that menu, "Pin panel to desktop", "Always on top", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
+* "Pin panel to desktop" only stops the panel **auto-hiding**; switching to another app still pushes it behind. Tick "Always on top" when you want it to stay visible
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
 > or turn it on in Settings → Personalization → Taskbar → Other system tray icons.
@@ -426,7 +430,7 @@ should any be used later, the MIT license and copyright notice will be preserved
 
 ### Known limitations
 
-* Limited controls: only on / off for the four ports so far. Scene modes, screen-off time and language are PIIDs that have also been tested as writable, they simply have no UI yet
+* **Firmware updates are not supported**: that would need the vendor's own upgrade path, this tool only reads power and changes everyday settings
 * Power accuracy is capped by the device: only 0.1 V / 0.1 A resolution
 * One-click updating only works from 0.4.0 onwards: anything older has to be replaced by hand once
 * The Rust version is still just a spike, with no complete protocol implementation
