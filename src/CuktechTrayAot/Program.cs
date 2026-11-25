@@ -108,6 +108,8 @@ internal static class Program
             ui.Attach(probe.Handle, Native.WM_APP_POST);
             // --render-demo：塞一份假数据，好在没接充电器时也能看「已连接」的排版
             bool demo = Has(args, "--render-demo");
+            // --render-merged：C3 与 A 合并成一路的假数据（issue #1 那种情形），看合并显示对不对
+            bool mergedDemo = demo && Has(args, "--render-merged");
             // --render-scale=2.5：强制按这个缩放渲染，好跟旧版 800x900 的真屏截图逐像素比较
             float renderScale = 0f;
             foreach (var a in args)
@@ -127,8 +129,8 @@ internal static class Program
             })
             {
                 probe.SetTab(tab);
-                if (demo) probe.SetDemoSnapshot(DemoSnapshot(tab));
-                probe.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-" + (demo ? "demo-" : "aot-") + name + sizeTag + ".png");
+                if (demo) probe.SetDemoSnapshot(DemoSnapshot(tab, mergedDemo));
+                probe.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-" + (mergedDemo ? "demo-merged-" : demo ? "demo-" : "aot-") + name + sizeTag + ".png");
             }
             LogSink.Write("[probe] rendered" + (demo ? " demo" : ""));
             return 0;
@@ -223,6 +225,25 @@ internal static class Program
             return 0;
         }
 
+        // 首次启动的隐私说明自查：不弹窗，直接把这一屏画成 PNG 看排版
+        if (Has(args, "--render-consent"))
+        {
+            float cs = 1.25f;
+            foreach (var a in args)
+            {
+                if (!a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)) continue;
+                if (float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float v)) cs = v;
+            }
+            var consent = new ConsentWindow(settings);
+            if (!consent.IsValid) { consent.Dispose(); return 3; }
+            consent.ForceScale(cs);
+            consent.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-consent.png");
+            consent.Dispose();
+            LogSink.Write("[probe] rendered consent");
+            return 0;
+        }
+
         // 图标字体自查：CreateFontW 找不到字体不会报错，只会静默回退，所以这里把真实字体名读回来
         if (Has(args, "--font-probe")) return DiagFonts();
 
@@ -233,6 +254,20 @@ internal static class Program
         // 半透明混合自查：同样的 alpha 白填充，在屏幕兼容 DDB 与 GDI+ 位图上各画一遍，
         // 看最终像素差多少（页签胶囊底比旧版亮，怀疑就是这里的差异）
         if (Has(args, "--alpha-probe")) return DiagAlpha();
+
+        // 第一次打开：先把隐私说明摆出来，点「同意并继续」才往下走（用户明确要的门）。
+        // 上面那些 --render-* / --selftest / --check-update 早就 return 了，不会被这扇门挡住。
+        if (!settings.PrivacyAccepted)
+        {
+            var consent = new ConsentWindow(settings);
+            bool agreed = consent.Ask();
+            consent.Dispose();
+            if (!agreed)
+            {
+                LogSink.Write("[start] 用户不同意隐私说明，退出");
+                return 0;
+            }
+        }
 
         // 没配对过：TrayApp 起来 800ms 后自己弹扫码向导（这里只留一行日志）
         if (!settings.IsComplete) LogSink.Write("[start] 未配置：等向导配对");
@@ -406,7 +441,7 @@ internal static class Program
 
     /// <summary>--render-demo 用的假数据：C1 4.0 W + C3 2.0 W = 总 6.0 W，与 docs\shot-panel-live.png 那张真机截图同一组数，
     /// 免得宣传视频里同一程序前后出现两套读数；控制页另给一个已断电的口。</summary>
-    private static Snapshot DemoSnapshot(PanelWindow.Tab tab)
+    private static Snapshot DemoSnapshot(PanelWindow.Tab tab, bool merged = false)
     {
         var snap = new Snapshot
         {
@@ -431,6 +466,14 @@ internal static class Program
 
         var a = snap.Ports[3];
         a.HasData = true; a.Idle = true; a.State = 0x00;
+
+        if (merged)
+        {
+            // issue #1 的那种情形：C3 与 A 共用一路功率计，C3 报 state=0x11 且带着合计值，
+            // A 那边固件按「空闲」报（0x00）。界面应该显示「C3+A 5.1V · 0.40A · 2.0W」+ A 行「并入 C3+A」。
+            c3.Watts = 2.0; c3.State = 0x11;
+            a.Idle = true; a.State = 0x00;
+        }
 
         return snap;
     }

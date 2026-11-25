@@ -116,6 +116,8 @@ A 320×404 borderless dark window with two tabs: **Read** (the default) and **Co
 
 * The top row holds the device name, a status dot plus its label (green = connected, amber = connecting, red = offline, no fill) and the pin
 * **Read tab**: the large total output plus four rows of voltage, current and power for C1 / C2 / C3 / A, refreshed every second; ports with nothing plugged in read "Idle"
+* **When C3 and A are merged, they count once**: the two ports share one power meter, and the firmware reports state `0x11` on it when it merges them.
+  The row that carries the numbers is then labelled **C3+A**, the other one no longer pretends to be "Idle" but says "merged into C3+A" in grey, and the total is not double counted
 * **It is just an ordinary window**: click the pin in the top right (or right-click the panel → Pin to desktop) and it stays on the desktop and remembers its position; click again to unpin.
   It is **not always-on-top and does not steal focus** — other windows cover it normally, it comes forward when clicked, and after a lock screen or user switch it never inexplicably ends up on top of everything
 
@@ -333,7 +335,14 @@ This program touches exactly two things: **the credentials of this one charger i
 - **To wipe it clean**: delete `settings.json` and `session.json` (or uninstall from the tray menu); nothing is left behind
 - The Bluetooth side leaves no trace either — the charger does not record which computer connected to it
 
-The first wizard screen has a privacy-note line that opens exactly the text above (the macOS wizard has a paragraph plus a full-note dialog on its welcome screen).
+**On first launch you read this screen and agree before anything else happens**:
+
+![Privacy notice: first launch requires agreement](docs/shot-consent.png)
+
+- The four sections are exactly the text above: what the QR login does / where the data lives / what this program never does / how to clean up
+- "Agree and continue" writes `PrivacyAccepted: true` into `settings.json` so it never asks again
+- "Disagree, quit", `Esc`, or just closing the window exits the process — **nothing is written and Bluetooth is not touched**
+- Installations from before 0.4.7 will see it once on upgrade (the field did not exist yet); macOS behaves the same from 0.1.2 on
 
 ---
 ## 10. Credits, contact and license

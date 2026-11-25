@@ -350,12 +350,14 @@ internal sealed class PanelWindow : WinBase
         var bar = new Rectangle(S(4), (int)(top + 4 * s), Math.Max(1, S(3)), S(14));
         FillRound(g, bar, 1.5f * s, barColor);
 
-        Text(g, p.Name, _fName, on ? Fg : Color.FromArgb(80, 85, 94), pad, top, 34 * s, 22 * s);
+        bool mergedOwner = _snap.IsMergedOwner(index);
+        Text(g, mergedOwner ? Snapshot.MergedName : p.Name, _fName, on ? Fg : Color.FromArgb(80, 85, 94), pad, top, 40 * s, 22 * s);
 
         string vals;
         Color valColor;
         // 灰阶跟 0.3.3 完全一致：(95,100,109) 用于「已断电 / — / 空载」，别用 Dim(154,160,166)
         if (!p.Enabled) { vals = "已断电"; valColor = Color.FromArgb(95, 100, 109); }
+        else if (_snap.IsMergedFollower(index)) { vals = "并入 " + Snapshot.MergedName; valColor = Color.FromArgb(95, 100, 109); }
         else if (!p.HasData) { vals = "—"; valColor = Color.FromArgb(95, 100, 109); }
         else if (p.Idle) { vals = "空载"; valColor = Color.FromArgb(95, 100, 109); }
         else
@@ -449,8 +451,11 @@ internal sealed class PanelWindow : WinBase
         var bar = new Rectangle(S(4), (int)(top + 4 * s), Math.Max(1, S(3)), S(14));
         FillRound(g, bar, 1.5f * s, barColor);
 
+        // 合并显示（issue #1）：C3+A 共用一路功率计，正主那行写「C3+A」，另一行说明并到哪去了
+        bool mergedOwner = _snap.IsMergedOwner(index);
+
         var nameColor = working ? Fg : p.Enabled ? Faint : Color.FromArgb(80, 85, 94);
-        Text(g, p.Name, _fName, nameColor, pad, top, 40 * s, 22 * s);
+        Text(g, mergedOwner ? Snapshot.MergedName : p.Name, _fName, nameColor, pad, top, 40 * s, 22 * s);
 
         if (working)
         {
@@ -460,6 +465,12 @@ internal sealed class PanelWindow : WinBase
             Text(g, "A", _fFoot, Faint, 132 * s + 62 * s + 1 * s, top, 12 * s, 22 * s);
             Text(g, p.Watts.ToString("F1"), _fValBold, WattStyle.Port(p.Watts), 200 * s, top, 92 * s, 22 * s, TextAnchor.Right);
             Text(g, "W", _fFoot, Faint, Width - pad - 8 * s, top, 12 * s, 22 * s);
+        }
+        else if (_snap.IsMergedFollower(index))
+        {
+            // 这一路的功率被并进了上面那行，所以不说「空闲」，直接说明它去哪了
+            Text(g, "并入 " + Snapshot.MergedName, _fVal, Color.FromArgb(120, 127, 137),
+                56 * s, top, Width - pad - 56 * s, 22 * s, TextAnchor.Right);
         }
         else
         {

@@ -4,6 +4,68 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.2 — 2026-11-25
+
+The macOS build catches up with the two Windows changes (merged ports, privacy consent) and **merges the community PR**.
+Thanks to [@a1287448852](https://github.com/a1287448852) for
+[PR #3](https://github.com/Blank2007/cuktech-ultra-tray/pull/3) and to
+[@KingGxxT](https://github.com/KingGxxT) for
+[issue #1](https://github.com/Blank2007/cuktech-ultra-tray/issues/1).
+
+- **C3 and A are shown as one merged port**: the rule and the wording match Windows 0.4.7 — the owner row is labelled
+  `C3+A`, the other row no longer says "idle" but shows a dimmed `merged into C3+A` (with a dimmed `—` where its wattage
+  used to be), and the total is counted once. `DeviceSnapshot` gained
+  `pairMerged` / `mergedOwner` / `rowName` / `rowDetail` / `rowWattsText`
+- **The privacy notice must be agreed to on first launch**: `Sources/CuktechTray/PrivacyWindow.swift`
+  (`PrivacyText` / `PrivacyView` / `PrivacyGate`) shows a modal window with exactly two ways out — "Agree and continue"
+  writes `privacyAccepted = true` and starts normally, "Disagree, quit" calls `exit(0)` without writing anything.
+  `Esc` and the close button do not dismiss it. Non-interactive paths (`--version` / `--selftest` /
+  `--wizard-demo`) skip the gate so CI keeps working
+- `AppSettings.privacyAccepted` is decoded with a hand-written `decodeIfPresent`: an older `config.json` without the field
+  does not throw the whole configuration away
+- **Four fixes from PR #3**: (1) the port switch index was off by one (`PortSlot.index` is 1…4 while
+  `setPortEnabled` validated 0..<4, so USB-A reported "port index must be 0~3"); new `PortSlot.zeroBasedIndex`.
+  (2) a Swift actor is re-entrant across `await`, so polling and manual control could send commands concurrently; new
+  `AsyncCommandMutex` and `DeviceSession.withTransactionLock(urgent:)`, with failures / reconnects / stops all going
+  through `teardownLink()`. (3) A SET answers with a single `op=0x01` ACK that carries no new value, so we return on it
+  instead of waiting out a fixed delay. (4) The disconnected "—" / 0.0 W is no longer hard-coded grey but lets the menu
+  bar invert it automatically — finally readable on a dark desktop
+- This release also fixes a truncated read-back: `MibleSession.receiveResponse` now accepts only `op = 0x03` for GET and
+  `op = 0x01` for SET, so a SET ACK sharing the siid/piid cannot cut the real GET result short
+- Version 0.1.1 → **0.1.2**; `Tests/CuktechCoreTests/ModelsTests.swift` gained five merged-power cases
+- `mac/README.md` gained three sections: the merged C3+A reading, the first-launch consent, and the full privacy text
+
+## 0.4.7 — 2026-11-25
+
+Two pieces of feedback in one release: **the port readings were wrong** — with C3 and A both plugged in, the Mi Home app
+shows one merged wattage while we labelled the port that reports nothing as "Idle", which looks broken; and **the privacy
+note had to be agreed to up front** — 0.4.6 only put a small line and a dialog inside the wizard, while what was asked for
+was "you must agree the first time you open it before it does anything".
+Thanks to [@KingGxxT](https://github.com/KingGxxT) for
+[issue #1](https://github.com/Blank2007/cuktech-ultra-tray/issues/1): one screenshot plus "C3 and A should be shown merged,
+the official firmware does not distinguish them either and just shows idle" nailed the problem.
+
+- **C3 and A are shown as one merged port**: the two outlets share a single power meter, and the firmware reports
+  `state = 0x11` on it when it merges them (`src/CuktechMible/MiotCodec.cs:109` has documented
+  `0x00 idle / 0x01 single port / 0x11 C3+A merged` all along — the UI simply never used it)
+  - Rule: if either C3 or A reports `state == 0x11` and has data, the pair counts as merged
+  - Read tab: the row that carries the numbers is labelled `C3+A`; the other row no longer claims "Idle" but says
+    "merged into C3+A" in grey
+  - The control tab's live-reading column does the same, while the two switches stay independently clickable
+  - The total is counted once: `Snapshot.TotalWatts` only adds the owner row when merged
+  - With nothing merged, not a pixel changes
+- **A privacy notice you must agree to on first launch**: a new standalone window
+  (`src/CuktechTrayAot/ConsentWindow.cs`, 500×546) with four sections — what the QR login does / where the data lives /
+  what this program never does / how to clean up. Body text wraps on measured pixel width and prefers to break at a space
+  (otherwise `%LOCALAPPDATA%\CuktechTray` gets cut in half)
+  - "Agree and continue" writes `PrivacyAccepted: true` into `settings.json` and never asks again
+  - "Disagree, quit", `Esc`, or closing the window exits the process — **nothing written, Bluetooth untouched**
+  - Existing installs see it once on upgrade (the field did not exist before 0.4.7)
+- `--render-consent` renders that screen straight to a PNG (for checking layout); new images
+  `docs/shot-consent.png` and `docs/shot-panel-merged.png`
+- README: the privacy section now says the first launch shows this screen, and the read tab documents the merged display
+- Version 0.4.6 → 0.4.7; `dist/CuktechTray.exe` is 10,898,944 bytes, FileVersion 0.4.7.0
+
 ## macOS 0.1.1 — 2026-11-25
 
 A macOS-only release: **0.1.0 could not connect to the charger at all on real hardware**, and the bug was in the

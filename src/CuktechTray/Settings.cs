@@ -49,6 +49,13 @@ internal sealed class Settings
     /// </summary>
     public double TaskbarLeftDip { get; set; } = -1;
 
+    /// <summary>
+    /// 用户是否已经在第一次打开时点过「同意并继续」。
+    /// 0.4.6 之前没有这扇门（隐私说明只是向导里一行字），0.4.7 起第一次启动必须先过这一屏。
+    /// 老版本升级上来的用户这里是 false，会再看一次，看完就写进 settings.json。
+    /// </summary>
+    public bool PrivacyAccepted { get; set; }
+
     private static string? _resolvedPath;
 
     /// <summary>

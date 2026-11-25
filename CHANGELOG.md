@@ -3,6 +3,54 @@
 这个项目最早只在我自己的一台电脑上跑，后来放到了 GitHub 上，所以下面是按「做过什么」整理的，
 版本号一路加到这里，方便对上安装包里的文件版本。
 
+## macOS 0.1.2 — 2026-11-25
+
+macOS 版这一版追上 Windows 的两条改动（合并功率、隐私同意），并且**把社区那条 PR 合了**。
+感谢 [@a1287448852](https://github.com/a1287448852) 的 [PR #3](https://github.com/Blank2007/cuktech-ultra-tray/pull/3)
+和 [@KingGxxT](https://github.com/KingGxxT) 的 [issue #1](https://github.com/Blank2007/cuktech-ultra-tray/issues/1)。
+
+- **C3 与 A 合并成一路显示**：判据、措辞与 Windows 0.4.7 完全一致——owner 那行显示 `C3+A`，
+  另一行不再写「空载」而是暗色 `并入 C3+A`（右侧功率位显示暗色 `—`），总功率只算一次。
+  `DeviceSnapshot` 新增 `pairMerged` / `mergedOwner` / `rowName` / `rowDetail` / `rowWattsText`
+- **首次启动必须先同意隐私说明**：`Sources/CuktechTray/PrivacyWindow.swift`（`PrivacyText` / `PrivacyView` / `PrivacyGate`），
+  模态窗口只能二选一——「同意并继续」写 `privacyAccepted = true` 后照常启动，「不同意，退出」直接 `exit(0)` 且不写盘；
+  `Esc` 与关窗都关不掉。`--version` / `--selftest` / `--wizard-demo` 这类非交互路径不弹，CI 照旧能跑
+- `AppSettings.privacyAccepted` 用手写 `decodeIfPresent` 解码：老 `config.json` 缺这个字段不会把整份配置丢成默认值
+- **PR #3 带进来的四条修复**：①端口开关索引错位（`PortSlot.index` 是 1…4，而 `setPortEnabled` 校验 0..<4，
+  USB-A 会报「端口序号只能是 0~3」，新增 `PortSlot.zeroBasedIndex`）；②Swift actor 在 await 处可重入，
+  轮询和手动控制会并发发命令，新增 `AsyncCommandMutex` 与 `DeviceSession.withTransactionLock(urgent:)`，
+  异常/重连/停止统一走 `teardownLink()`；③SET 只回一帧 op=0x01 ACK 不含新值，收到就返回，省掉固定等待；
+  ④未连接时的「—」/0.0 W 不再硬编码灰色，交给系统菜单栏自动反色（深色壁纸下终于看得见）
+- 本版还修了一处读回被截断：`MibleSession.receiveResponse` 现在 GET 只认 `op = 0x03`、SET 只认 `op = 0x01` 的 ACK，
+  避免同 siid/piid 的 SET ACK 把真正的 GET 结果提前截断
+- 版本 0.1.1 → **0.1.2**；`Tests/CuktechCoreTests/ModelsTests.swift` 追加 5 条合并功率用例
+- `mac/README.md` 补「C3 与 A 合并成一路功率」与「首次启动必须先同意」「隐私说明全文」三节
+
+## 0.4.7 — 2026-11-25
+
+两条反馈凑到一版：**接口读数不对**——C3 和 A 同时插着时，米家 App 显示的是一个合并后的功率，
+我们却把没数据的那口写成「空闲」，看着像坏了；**隐私说明得先点同意**——0.4.6 只在向导里放了一行小字
+加个弹窗，用户要的是「第一次打开必须同意才能用」。
+感谢 [@KingGxxT](https://github.com/KingGxxT) 的 [issue #1](https://github.com/Blank2007/cuktech-ultra-tray/issues/1)：
+一张截图加一句「C3 和 A 口应该合并在一起显示，目前官方固件也没区分出现显示，目前会显示空载」，把问题说得很清楚。
+
+- **C3 与 A 合并成一路显示**：这两个口共用同一路功率计，固件合并工作时会在这路上报 `state = 0x11`
+  （`src/CuktechMible/MiotCodec.cs:109` 早就记着 `0x00 空闲 / 0x01 单口 / 0x11 C3+A 合并`，只是界面一直没用上）
+  - 判据：C3 或 A 任一路 `state == 0x11` 且该路有数 → 视为合并
+  - 读数页：有数的那行名字改成 `C3+A`，读数照旧；另一行不再写「空闲」，改成灰字「并入 C3+A」
+  - 控制页「实时读数」列同样处理，两路开关仍然各自独立可点
+  - 总输出只算一次：`Snapshot.TotalWatts` 遇到合并时只累加代表行的功率
+  - 没合并时行为一个像素都不变
+- **第一次打开先看隐私说明、点同意才继续**：新增独立窗口（`src/CuktechTrayAot/ConsentWindow.cs`，500×546），
+  四段正文——扫码登录时会做什么 / 数据留在哪里 / 不会做的事 / 想清干净，正文按像素宽度断行、断点优先落在空格
+  （不然 `%LOCALAPPDATA%\CuktechTray` 会被切成两半）
+  - 点「同意并继续」→ `settings.json` 写 `PrivacyAccepted: true`，以后不再弹
+  - 点「不同意，退出」、按 `Esc`、直接关窗口 → 进程退出，**不写任何文件、不连蓝牙**
+  - 老用户升级上来会再看一次（0.4.7 之前没有这个字段）
+- `--render-consent` 能把这一屏直接渲成 PNG（自查排版用）；配图 `docs/shot-consent.png`、`docs/shot-panel-merged.png`
+- README 的隐私一节补上「第一次打开会看到这一屏」，读数页补上合并显示这条
+- 版本号 0.4.6 → 0.4.7；`dist/CuktechTray.exe` 10,898,944 字节，FileVersion 0.4.7.0
+
 ## macOS 0.1.1 — 2026-11-25
 
 macOS 版单独发一版：**0.1.0 在真机上压根连不上充电器**，问题出在广播解析。
