@@ -69,6 +69,8 @@ public enum SceneMode {
 /// 一路端口的读数（SIID=2, PIID 1..4）。
 public struct PortSlot: Equatable, Sendable {
     public var index: Int          // 1..4
+    /// 0..3（用于 bitmask 与端口控制接口，避免 1-based 与 0-based 混用）。
+    public var zeroBasedIndex: Int { index - 1 }
     public var enabled: Bool
     public var hasData: Bool
     public var idle: Bool

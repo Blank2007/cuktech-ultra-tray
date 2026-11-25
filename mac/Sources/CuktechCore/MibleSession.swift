@@ -54,6 +54,52 @@ final class NotifyQueue: @unchecked Sendable {
     }
 }
 
+/// 轻量异步互斥锁：保证同一个 MibleSession 上同时只有一条命令在执行，
+/// 防止轮询与控制指令并发交错导致加密计数器或通道应答错乱。
+final class AsyncCommandMutex: @unchecked Sendable {
+    private let lock = NSLock()
+    private var locked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    private func tryLockSync() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if !locked {
+            locked = true
+            return true
+        }
+        return false
+    }
+
+    func acquire() async {
+        if tryLockSync() { return }
+
+        await withCheckedContinuation { cont in
+            lock.lock()
+            if !locked {
+                locked = true
+                lock.unlock()
+                cont.resume()
+            } else {
+                waiters.append(cont)
+                lock.unlock()
+            }
+        }
+    }
+
+    func release() {
+        lock.lock()
+        if waiters.isEmpty {
+            locked = false
+            lock.unlock()
+        } else {
+            let next = waiters.removeFirst()
+            lock.unlock()
+            next.resume()
+        }
+    }
+}
+
 /// 小米 MIoT BLE (mible) 会话：认证握手 + AES-128-CCM 加密帧 + MiOT TLV 命令。
 /// 移植自 Windows 版 src/CuktechMible/MibleSession.cs（同一套字节序列，逐行核对过）。
 public final class MibleSession: @unchecked Sendable {
@@ -70,6 +116,7 @@ public final class MibleSession: @unchecked Sendable {
 
     private let link: MibleLink
     private let token: [UInt8]
+    private let commandMutex = AsyncCommandMutex()
     private var queues: [MibleChannel: NotifyQueue] = [:]
 
     private var devKey: [UInt8] = []
@@ -347,6 +394,9 @@ public final class MibleSession: @unchecked Sendable {
     /// 发送一条 MiOT 命令。value=nil 表示 GET。
     public func sendCommand(siid: UInt8, piid: UInt16, value: UInt32? = nil,
                             timeout: TimeInterval = 8.0) async throws -> MiotMessage? {
+        await commandMutex.acquire()
+        defer { commandMutex.release() }
+
         guard authenticated else { throw MibleError.notAuthenticated }
 
         await drainPendingPushes()
@@ -362,39 +412,24 @@ public final class MibleSession: @unchecked Sendable {
 
     private func receiveResponse(siid: UInt8, piid: UInt16, isSet: Bool,
                                  timeout: TimeInterval) async throws -> MiotMessage? {
-        var deadline = Date().addingTimeInterval(timeout)
-        var gotAck = false
+        let deadline = Date().addingTimeInterval(timeout)
 
         while Date() < deadline {
             let remain = deadline.timeIntervalSinceNow
             let step = remain < 3.0 ? remain : 3.0
             guard let data = await read(.cmdRecv, step) else {
-                if gotAck { break }
                 continue
             }
 
             guard let msg = try await decodeInline(data) else { continue }
 
             if msg.siid == siid && msg.piid == UInt8(piid & 0xFF) {
-                if msg.isGetResult { return msg }
-                if msg.isSetAck {
-                    if isSet {
-                        gotAck = true
-                        deadline = Date().addingTimeInterval(1)
-                        continue
-                    }
+                // 设备对 SET 只回 op=0x01 ACK（不含新值），无需额外空等 1s，由调用方显式 GET 回读
+                if msg.isGetResult || msg.isSetAck {
                     return msg
                 }
             }
             if msg.isPush { onPush?(msg) }
-        }
-
-        if gotAck {
-            var ack = MiotMessage()
-            ack.opcode = 0x01
-            ack.siid = siid
-            ack.piid = UInt8(piid & 0xFF)
-            return ack
         }
         return nil
     }

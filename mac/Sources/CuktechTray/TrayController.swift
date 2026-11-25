@@ -94,26 +94,30 @@ final class TrayController: NSObject {
     private func updateTitle() {
         guard let button = statusItem.button else { return }
         let text: String
-        var color = NSColor.secondaryLabelColor
+        var color: NSColor?
 
         if !settings.showWattsInMenuBar {
             text = "瓦"
         } else if snapshot.connected {
             text = snapshot.totalText
-            let c = snapshot.totalColor
-            color = NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: 1)
+            if snapshot.totalWatts > 0.05 {
+                let c = snapshot.totalColor
+                color = NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: 1)
+            }
         } else if session != nil {
             text = "—"
         } else {
             text = "未配对"
         }
 
-        button.attributedTitle = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: color,
-            ])
+        var attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+        ]
+        // 中性状态不硬编码颜色，由系统菜单栏按壁纸明暗自动适配反白/反黑（避免浅色模式+深色壁纸下隐身）
+        if let color {
+            attrs[.foregroundColor] = color
+        }
+        button.attributedTitle = NSAttributedString(string: text, attributes: attrs)
         button.toolTip = snapshot.connected ? snapshot.headline : "酷态科 10 号 Ultra · \(snapshot.status)"
     }
 

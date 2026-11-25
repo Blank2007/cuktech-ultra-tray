@@ -50,4 +50,9 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(SceneMode.name(3), "单口")
         XCTAssertEqual(SceneMode.name(9), "模式 9")
     }
+
+    func testPortSlotZeroBasedIndex() {
+        let slots = (1...4).map { PortSlot(index: $0) }
+        XCTAssertEqual(slots.map(\.zeroBasedIndex), [0, 1, 2, 3])
+    }
 }
