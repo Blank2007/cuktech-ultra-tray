@@ -44,7 +44,7 @@ else
   echo "   没生成出 iconset，跳过图标" >&2
 fi
 
-# 版本号写进 Info.plist，跟 Windows 版共用同一个版本号
+# 版本号写进 Info.plist。macOS 版自成一套号（0.1.x），源头是 Sources/CuktechCore/BuildInfo.swift
 VER="$("$APP/Contents/MacOS/CuktechTray" --version 2>/dev/null || echo "")"
 if [ -n "$VER" ]; then
   /usr/bin/sed -i '' "s/__VERSION__/$VER/g" "$APP/Contents/Info.plist"
