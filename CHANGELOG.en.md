@@ -4,6 +4,22 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.2 — 2026-11-25
+
+This one fixes a hole I dug myself: **a panel position remembered off-screen was restored as-is, so the panel
+never came back into view**.
+
+- **The saved position is clamped before showing** (`ShowAtClamped` / `ClampKeepVisible` in
+  `src/CuktechTrayAot/PanelWindow.cs`): `MonitorFromPoint` picks the nearest monitor and the position is pulled back
+  into its work area; when that happens the log gets `[panel] 记住的位置在屏幕外 -495,1072 → 挪到 0,1035` and the
+  corrected coordinates are written back to `settings.json`
+- **Dragging is clamped too**: dragging used to push absolute coordinates straight into `SetWindowPos`, so the panel
+  could be dragged fully off-screen (that is exactly how this broke); it now stops at the edge, keeping 60 dip visible
+- **New tray item "Reset panel position (back to the bottom-right corner)"**: clears the stored position in one click
+- Worth noting: with `PanelPinned` true and a stale off-screen `PanelX`/`PanelY`, the panel vanished **on every start**,
+  not occasionally; 0.5.1's always-on-top switch only touches z-order and does not move the window, so it is unrelated
+- Version 0.5.1 -> **0.5.2**
+
 ## 0.5.1 — 2026-11-25
 
 Two things this round: the **per-port capture stats** now match macOS, and the panel gains an

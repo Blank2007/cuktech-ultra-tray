@@ -589,7 +589,10 @@ internal sealed class PanelWindow : WinBase
         if (_dragging)
         {
             Native.GetCursorPos(out var pt);
-            Native.SetWindowPos(Hwnd, IntPtr.Zero, pt.X - _dragGrab.X, pt.Y - _dragGrab.Y, 0, 0,
+            int nx = pt.X - _dragGrab.X, ny = pt.Y - _dragGrab.Y;
+            // 别让面板被拖到屏幕外面去：至少留 60dip 露在屏幕里，否则位置一存盘下次就找不回来了
+            ClampKeepVisible(ref nx, ref ny, S(DesignW), S(DesignH), S(60), S(60));
+            Native.SetWindowPos(Hwnd, IntPtr.Zero, nx, ny, 0, 0,
                 Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
         }
     }
@@ -878,6 +881,37 @@ internal sealed class PanelWindow : WinBase
             Native.SetFocus(Hwnd);
         }
         Invalidate();
+    }
+
+    /// <summary>
+    /// 按记住的位置显示。位置已经不在任何屏幕上（换过分辨率、缩放过、或者被拖出了界）就挪回离它最近的屏幕，
+    /// 否则窗口照样「存在且可见」，但用户什么都看不见 —— 0.5.1 就是这么把面板弄丢的。
+    /// </summary>
+    public void ShowAtClamped(int x, int y)
+    {
+        int w = S(DesignW), h = S(DesignH);
+        int nx = x, ny = y;
+        ClampKeepVisible(ref nx, ref ny, w, h, w, h);
+        if (nx != x || ny != y)
+            LogSink.Write("[panel] 记住的位置在屏幕外 " + x + "," + y + " → 挪到 " + nx + "," + ny);
+        ShowAt(nx, ny);
+    }
+
+    /// <summary>
+    /// 把窗口左上角收进离它最近的那块屏幕。keepW/keepH 是必须露在屏幕里的宽高：
+    /// 给整块宽高 = 完全收进来；给小一点 = 允许一半探出去（拖动时用）。
+    /// </summary>
+    private static void ClampKeepVisible(ref int x, ref int y, int w, int h, int keepW, int keepH)
+    {
+        var pt = new Native.POINT { X = x, Y = y };
+        IntPtr mon = Native.MonitorFromPoint(pt, Native.MONITOR_DEFAULTTONEAREST);
+        var mi = new Native.MONITORINFO { cbSize = Marshal.SizeOf<Native.MONITORINFO>() };
+        if (!Native.GetMonitorInfoW(mon, ref mi)) return;
+        var wa = mi.rcWork;
+        int loX = wa.Left - w + keepW, hiX = wa.Right - keepW;
+        int loY = wa.Top - h + keepH, hiY = wa.Bottom - keepH;
+        if (loX <= hiX) { if (x < loX) x = loX; if (x > hiX) x = hiX; }
+        if (loY <= hiY) { if (y < loY) y = loY; if (y > hiY) y = hiY; }
     }
 
     public void ShowAtCurrent()

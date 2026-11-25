@@ -253,10 +253,11 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
 * The full context menu: Show power panel / Show control page / Device settings / Per-port capture / Charge mode / Pin panel to desktop / Always on top /
-  Show power on taskbar / Reset taskbar digits position / Reconnect / Check for updates / About / Install on this PC (Uninstall from this PC) /
+  Show power on taskbar / Reset taskbar digits position / Reset panel position (back to the bottom-right corner) / Reconnect / Check for updates / About / Install on this PC (Uninstall from this PC) /
   Start with Windows / Open log / Settings file / Exit
 * In that menu, "Pin panel to desktop", "Always on top", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
 * "Pin panel to desktop" only stops the panel **auto-hiding**; switching to another app still pushes it behind. Tick "Always on top" when you want it to stay visible
+* The panel position lives in `PanelX` / `PanelY`; if it ever ends up off-screen (monitor swapped, scaling changed) the next start pulls it back into the monitor, and the menu has "Reset panel position" as a manual way out
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,
 > or turn it on in Settings → Personalization → Taskbar → Other system tray icons.

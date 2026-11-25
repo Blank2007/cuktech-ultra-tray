@@ -364,7 +364,15 @@ internal sealed class TrayApp : WinBase
             _panel.AutoHideAfterMs = 0;
             if (_settings.PanelX != int.MinValue)
             {
-                _panel.ShowAt(_settings.PanelX, _settings.PanelY);
+                _panel.ShowAtClamped(_settings.PanelX, _settings.PanelY);
+                // 位置要是被挪回来了，就把修好的坐标写回去，别每次启动都再修一遍
+                var fixedRect = _panel.ScreenRect();
+                if (fixedRect.Left != _settings.PanelX || fixedRect.Top != _settings.PanelY)
+                {
+                    _settings.PanelX = fixedRect.Left;
+                    _settings.PanelY = fixedRect.Top;
+                    _settings.Save();
+                }
             }
             else
             {
@@ -449,6 +457,7 @@ internal sealed class TrayApp : WinBase
             MenuEntry.CheckItem("面板始终在最前", _panel.AlwaysOnTop, ToggleAlwaysOnTop),
             MenuEntry.CheckItem("在任务栏显示功率", _widget is not null, ToggleTaskbarWidget),
             new MenuEntry { Text = posText, Enabled = _widget is not null, Click = ResetTaskbarPosition },
+            MenuEntry.Item("重置面板位置（收回右下角）", ResetPanelPosition),
             MenuEntry.Dim(StatusLine()),
             MenuEntry.Sep(),
             MenuEntry.Item("重新连接", () => _client.Restart()),
@@ -520,6 +529,33 @@ internal sealed class TrayApp : WinBase
 
         _widget.ResetPosition();
         SetStatus("任务栏数字已放回开始按钮左边");
+    }
+
+    /// <summary>
+    /// 面板位置记坏了（拖出屏幕、换过分辨率）时的后路：清掉记住的坐标，开着「固定」就立刻显一次，
+    /// 让它按右下角重新算一遍位置存回去。
+    /// </summary>
+    private void ResetPanelPosition()
+    {
+        _settings.PanelX = int.MinValue;
+        _settings.PanelY = int.MinValue;
+        _settings.Save();
+        _lastPanelRect = default;
+        LogSink.Write("[panel] 位置已重置");
+
+        if (_panel.Pinned)
+        {
+            ShowPanel(false);
+            var r = _panel.ScreenRect();
+            _settings.PanelX = r.Left;
+            _settings.PanelY = r.Top;
+            _settings.Save();
+            SetStatus("面板已回到右下角");
+        }
+        else
+        {
+            SetStatus("面板位置已清空，下次打开在右下角");
+        }
     }
 
     // ---------------- 杂项 ----------------
