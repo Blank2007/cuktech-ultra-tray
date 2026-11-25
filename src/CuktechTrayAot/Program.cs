@@ -244,6 +244,64 @@ internal static class Program
             return 0;
         }
 
+        // 设备设置窗口排版自查（0.5.0）：不连蓝牙，用 Demo 数据把这一屏画成 PNG
+        if (Has(args, "--render-settings"))
+        {
+            float ss = 1.25f;
+            foreach (var a in args)
+            {
+                if (!a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)) continue;
+                if (float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float v)) ss = v;
+            }
+            var sclient = new DeviceClient(settings, null);
+            using var dwin = new DeviceSettingsWindow(sclient);
+            if (!dwin.IsValid) return 3;
+            dwin.ForceScale(ss);
+            dwin.UseDemoData();
+            dwin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-settings.png");
+            LogSink.Write("[probe] rendered settings");
+            return 0;
+        }
+
+        // 单口采集窗口排版自查（0.5.0）：完成态用真 CaptureAccumulator 喂 250 个假采样点
+        if (Has(args, "--render-capture"))
+        {
+            float cs2 = 1.25f;
+            foreach (var a in args)
+            {
+                if (!a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)) continue;
+                if (float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float v)) cs2 = v;
+            }
+            var cclient = new DeviceClient(settings, null);
+            using var cwin = new CaptureWindow(cclient);
+            if (!cwin.IsValid) return 3;
+            cwin.ForceScale(cs2);
+            cwin.UseDemoData();
+            cwin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-capture.png");
+            LogSink.Write("[probe] rendered capture");
+            return 0;
+        }
+
+        // 关于窗口排版自查（0.5.0）：不发任何网络请求
+        if (Has(args, "--render-about"))
+        {
+            float as2 = 1.25f;
+            foreach (var a in args)
+            {
+                if (!a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)) continue;
+                if (float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float v)) as2 = v;
+            }
+            using var awin = new AboutWindow();
+            if (!awin.IsValid) return 3;
+            awin.ForceScale(as2);
+            awin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-about.png");
+            LogSink.Write("[probe] rendered about");
+            return 0;
+        }
+
         // 图标字体自查：CreateFontW 找不到字体不会报错，只会静默回退，所以这里把真实字体名读回来
         if (Has(args, "--font-probe")) return DiagFonts();
 

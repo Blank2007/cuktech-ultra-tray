@@ -54,6 +54,9 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 📊 **Taskbar too** | A small strip at the far left of the taskbar, right next to the Start button, shows total power live — digits only, no icon and no background plate, and you can drag it somewhere else |
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
+| 🎚️ **Device settings** | Tray menu -> "Device settings": screen timeout, idle screen-off, orientation lock, screen language, per-port countdown shutoff, USB-A low-current mode and per-port fast-charge protocols. Anything that cannot be read is dimmed and unclickable - "not read" is never shown as "off" |
+| ⏱️ **Per-port capture** | Tray menu -> "Per-port capture": sample one port every second and get Wh, average, peak and voltage changes for that session when you stop |
+| 💬 **About** | Tray menu -> "About": version, project page and who helped with this release. Opening it sends no request at all; only "Check for updates" touches the network |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
 | 🔄 **Updates itself** | One click on "Check for updates" downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. Only that click touches the network; nothing else does |
@@ -181,6 +184,44 @@ The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene
 * The tab reads the real value from the device every time you open it — no cached value pretending
 * The tray right-click menu has a matching "Charge mode" submenu, with the check mark following the current profile
 
+### Device settings
+
+![Device settings: screen, ports and fast-charge protocols, with the unreadable ones dimmed](docs/shot-settings.png)
+
+Tray menu -> "Device settings". This page changes **the charger's own settings**, not the config file this program keeps (that is still `settings.json`).
+
+| Group | What you can change | Protocol |
+|---|---|---|
+| Screen | Screen timeout (1 / 5 / 10 / 30 min or always on), idle screen-off, orientation lock, screen language (Chinese / English) | SIID 2, PIID 6 / 19 / 20 / 13 |
+| Ports | Countdown shutoff per port (off / 15 min / 30 min / 1 h / 2 h / 4 h, click to cycle) and USB-A low-current mode | PIID 9-12 / 15 |
+| Fast charge | Which handshakes each port may use: PD / PPS / UFCS on C1 and C2, UFCS / SCP on C3 and A | PIID 21 bitmask |
+
+* Every write is read back; a mismatch says "the device only accepted 0x..." instead of pretending it worked
+* Two bits of the protocol mask are reserved and hard-wired by firmware, so the value is read first and only the target bits change. If that baseline cannot be read the write is refused
+* When the settings cannot be read (unsupported firmware, just disconnected) every control is dimmed and the status line says the charger is not connected
+* The port rows also show what that port is negotiating right now (`PD 65W`), because that belongs on the same screen as its countdown
+
+### Per-port capture
+
+![Per-port capture: pick a port, it samples once a second and reports Wh](docs/shot-capture.png)
+
+Tray menu -> "Per-port capture". Pick C1 / C2 / C3 / A, press "Start capture", it samples that port once a second, and "Stop" gives you the result:
+
+* **Wh**, **average power** (divided by the seconds that actually delivered power, not by total time), **peak**, **voltage range** and **voltage changes**
+* The integration is conservative: trapezoidal inside one voltage tier; on a tier change (5 V -> 20 V) that second uses the pre-jump power, because averaging would invent a 12.5 V state that never existed and roughly double the energy
+* Gaps longer than 4 s are skipped rather than filled in, so the total cannot grow out of nowhere
+* 30 s with no output, or 30 s without readings, ends the capture on its own and tells you which one it was
+* "Copy summary" puts the whole result on the clipboard, ready to paste into a chat window
+
+### About
+
+![About: version, project page and credits; only the update check goes online](docs/shot-about.png)
+
+Tray menu -> "About". It shows the version, the project page, the tested firmware and who helped with this release.
+
+* Opening this window sends **no network request**; only "Check for updates" asks GitHub
+* "Open download page" just opens the Releases page in your browser - for people who would rather not let the exe replace itself
+
 ### Tray menu
 
 Right-clicking the tray icon gets you this menu; a left-click just shows or hides the panel.
@@ -208,8 +249,9 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
 * The program has no main window; it just lives in the tray. On startup it pops the panel once in the bottom right corner (numbers start flowing after about 4 s of authentication) and tucks it away if nobody touches it for 12 s
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
-* The full context menu: Show power panel / Show control page / Charge mode / Pin panel to desktop / Show power on taskbar / Reset taskbar digits position /
-  Reconnect / Check for updates / Install on this PC (Uninstall from this PC) / Start with Windows / Open log / Settings file / Exit
+* The full context menu: Show power panel / Show control page / Device settings / Per-port capture / Charge mode / Pin panel to desktop /
+  Show power on taskbar / Reset taskbar digits position / Reconnect / Check for updates / About / Install on this PC (Uninstall from this PC) /
+  Start with Windows / Open log / Settings file / Exit
 * In that menu, "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
 
 > On Win11, newly appeared tray icons are tucked into the "hidden icons" overflow area by default. If you can't see it, click the `^` on the taskbar and drag it onto the taskbar,

@@ -36,7 +36,7 @@ internal sealed class PanelWindow : WinBase
     private static readonly Color Warn = WattStyle.Warn;
     private static readonly Color Bad = WattStyle.Bad;
     private static readonly Color SepColor = Color.FromArgb(44, 49, 57);
-    private static readonly Color BandColor = Color.FromArgb(11, 255, 255, 255);
+    // 0.4.8：原来 C2 / A 那两行有一层隔行底纹（8% 白），被指出「四行应该长得一样」，整条去掉了
     private static readonly Color BarIdle = Color.FromArgb(58, 63, 72);
 
     private const string PinGlyph = "\uE718";
@@ -338,12 +338,6 @@ internal sealed class PanelWindow : WinBase
         float pad = 16 * s;
         bool on = p.Enabled;
 
-        if (index % 2 == 1)
-        {
-            var band = new Rectangle(S(10), (int)(top - 6 * s), Width - S(20), S(36));
-            FillRound(g, band, 8 * s, BandColor);
-        }
-
         var barColor = !p.Enabled ? Color.FromArgb(70, 76, 86)
                      : p.Working ? WattStyle.Port(p.Watts)
                      : BarIdle;
@@ -440,12 +434,6 @@ internal sealed class PanelWindow : WinBase
         float pad = 16 * s;
         bool on = _snap.Connected && p.Enabled;
         bool working = on && p.Working;
-
-        if (index % 2 == 1)
-        {
-            var band = new Rectangle(S(10), (int)(top - 6 * s), Width - S(20), S(36));
-            FillRound(g, band, 8 * s, BandColor);
-        }
 
         var barColor = working ? WattStyle.Port(p.Watts) : BarIdle;
         var bar = new Rectangle(S(4), (int)(top + 4 * s), Math.Max(1, S(3)), S(14));

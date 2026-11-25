@@ -430,6 +430,8 @@ internal sealed class TrayApp : WinBase
         {
             MenuEntry.BoldItem("显示功率面板", () => ShowPanel(true)),
             MenuEntry.Item("显示控制页（四路开关）", () => ShowPanel(true, PanelWindow.Tab.Control)),
+            MenuEntry.Item("设备设置（息屏 / 定时断电 / 协议）…", OpenDeviceSettings),
+            MenuEntry.Item("单口采集（按秒算电量）…", OpenCapture),
             MenuEntry.WithSub("充电模式", modeItems.ToArray()),
             MenuEntry.CheckItem("固定面板到桌面", _panel.Pinned, () => _panel.TogglePin()),
             MenuEntry.CheckItem("在任务栏显示功率", _widget is not null, ToggleTaskbarWidget),
@@ -443,6 +445,7 @@ internal sealed class TrayApp : WinBase
                 : MenuEntry.Item("安装到本机…", InstallToMachine),
             MenuEntry.Item("重新配置设备…", ReconfigureDevice),
             MenuEntry.Item("检查更新…", CheckUpdates),
+            MenuEntry.Item("关于…", ShowAbout),
             MenuEntry.Item("打开日志", OpenLog),
             MenuEntry.Item("设置文件", OpenSettings),
             MenuEntry.Sep(),
@@ -537,6 +540,46 @@ internal sealed class TrayApp : WinBase
     }
 
     private void ReconfigureDevice() => ShowWizard();
+
+    // 三个自绘小窗共用一把「一次只开一个」的闸：它们各自跑自己的消息循环，
+    // 叠成两层嵌套循环时 Esc / 关窗的归属会变得说不清。
+    private bool _modalOpen;
+
+    private void OpenDeviceSettings()
+    {
+        if (_modalOpen) return;
+        _modalOpen = true;
+        try
+        {
+            using var w = new DeviceSettingsWindow(_client);
+            if (w.IsValid) w.ShowModal();
+        }
+        finally { _modalOpen = false; }
+    }
+
+    private void OpenCapture()
+    {
+        if (_modalOpen) return;
+        _modalOpen = true;
+        try
+        {
+            using var w = new CaptureWindow(_client);
+            if (w.IsValid) w.ShowModal();
+        }
+        finally { _modalOpen = false; }
+    }
+
+    private void ShowAbout()
+    {
+        if (_modalOpen) return;
+        _modalOpen = true;
+        try
+        {
+            using var w = new AboutWindow();
+            if (w.IsValid) w.ShowModal();
+        }
+        finally { _modalOpen = false; }
+    }
 
     /// <summary>
     /// 扫码配对向导：菜单「重新配置设备…」和「首次启动还没配对」都走这里。

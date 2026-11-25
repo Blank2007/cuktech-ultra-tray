@@ -4,6 +4,44 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.0 — 2026-11-25
+
+The features in this release came from someone else. Community member
+[@editwe](https://github.com/editwe) built device settings, per-port capture, a pinned panel and an about
+window in [PR #4](https://github.com/Blank2007/cuktech-ultra-tray/pull/4) for macOS; this release ports them to
+Windows over the same protocol.
+
+- **Device settings** (new window, `src/CuktechTrayAot/DeviceSettingsWindow.cs`), in three groups: screen
+  (screen timeout / idle screen-off / orientation lock / language), ports (per-port countdown shutoff for C1-A
+  plus USB-A low-current mode) and fast-charge protocols (which handshakes each port may negotiate).
+  Every write is SET, read back, compare; a mismatch reports "the device only accepted 0x..."
+- **The protocol mask is read-modify-write**: bits 3 and 11 of the PIID 21 mask are reserved and hard-wired by
+  firmware, so the current value is read first and only the target bits are changed. If that baseline cannot be
+  read the write is **refused** rather than risking other bits
+- **Anything that cannot be read is disabled**: when the settings cannot be read at all (just disconnected,
+  unsupported firmware) the controls are dimmed and the status line says the charger is not connected. "Not read"
+  is never shown as "off" - the same mistake as reporting a port with no data as idle in 0.4.7
+- **Countdown shutoff** cycles through 0 / 15 / 30 / 60 / 120 / 240 minutes; the read-back may be the remaining
+  time rather than the configured value, so this one is logged but not treated as a failure
+- **Per-port capture** (new window, `src/CuktechTrayAot/CaptureWindow.cs`): pick a port, it samples once a second,
+  and stopping gives you Wh, average power, peak, voltage range, voltage changes and why it ended, with a
+  copyable summary. The algorithm lives in `src/CuktechTray/Capture.cs`, shared with future shells
+- **The integration is deliberately conservative**: trapezoidal within one voltage tier; when the tier changes
+  (adjacent samples differ by 0.35 V or more) that second is integrated at the pre-jump power - averaging would
+  invent a non-existent 12.5 V state between 5 V and 20 V and roughly double the energy. Gaps longer than 4 s are
+  skipped, and the average divides by **seconds actually delivering power**, not total elapsed time
+- **End conditions are checked before sampling**: 30 s with no output means no load, 30 s with no readings means
+  no data, a dropped link means disconnected, and pressing stop means stopped. All four are recorded in the result
+- **About** (new window, `src/CuktechTrayAot/AboutWindow.cs`): version, project page, tested firmware and who
+  helped with this release. Opening it makes **no network request**; only "Check for updates" talks to GitHub
+    (it compares release asset names rather than tags, same rule as the self-updater)
+- The tray menu gains "Device settings", "Per-port capture" and "About". The three custom-drawn windows share one
+  modal gate (`TrayApp._modalOpen`) so stacking them cannot make Esc close the wrong one
+- One false alarm cleared up: the 0.4.8 `--selftest` printed a single `[start]` line and exited, which was not a
+  crash - another instance held the single-instance mutex and the process yielded by design. Self-check arguments
+  now expect `--standalone`
+- Version 0.4.8 -> **0.5.0**; `README.en.md` gains the matching three sections and screenshots
+
 ## macOS 0.1.2 — 2026-11-25
 
 The macOS build catches up with the two Windows changes (merged ports, privacy consent) and **merges the community PR**.
