@@ -284,6 +284,28 @@ mac/
 
 ---
 
+## 0.1.6 里的变化（社区 PR #5 的后半 + 自己补的）
+
+[@editwe](https://github.com/editwe) 的 [PR #5](https://github.com/Blank2007/cuktech-ultra-tray/pull/5)
+按 0.1.5 / 0.1.6 两版提交，这里合成 macOS 的 **0.1.6**（0.1.4 的内容上一版 0.1.3 已经并过）。
+分支是从 0.1.1 时期拉的，直接 merge 会把 0.1.2 / 0.1.3 / 0.1.4 冲回去，所以按语义手工搬了一遍。
+
+- **连接更稳**：只用一个 central，连接前先清掉陈旧连接；扫描阶段会用 `retrieveConnectedPeripherals` **接管**
+  系统里已经连上的那台（以前这种情况只能干等超时），扫描超时之后再试一次接管
+- **睡醒自动重连**：`NSWorkspace.didWakeNotification` 之后主动重连一次，不用手动点「重新连接」
+- **记住 `peripheralId`**：同一台充电器下次按标识找，不用再靠 RSSI 猜。这个字段是**可选**的——
+  老 `config.json` 里没有它，若当成必填，解码失败会把已经配好的 MAC 和 token 一起冲掉
+- **采集补上平均 / 最大**：电压、电流、功率各一行两列，口径跟 Windows 0.5.1 一致（峰值电流只认带载样本、
+  拔线不算换档、跨档按跳变前积分、空口待机不进电压区间）；新增 `testVoltageStepIsNotAveraged`（11.75 V）
+  与 `testUnplugIsNotARailChange` 两条测试；`--capture-demo` 可以直接看样例结果
+- **面板「始终在最前」**：托盘菜单里勾上就 `NSWindow.level = .floating`，跟「固定面板」互相独立
+- **菜单栏不再抖**：那一格固定 58 pt，并且只有读数 / 颜色真的变了才重绘（内容指纹去抖）；托盘菜单可以关掉
+- **面板玻璃质感**：macOS 26 用 `NSGlassEffectView`，13~15 退回 `NSVisualEffectView`；只动面板背景，
+  其它窗口不变，托盘菜单可关（默认开）
+- **参考了衍生项目的思路**：固定宽度菜单栏、睡醒重连、玻璃质感这三处来自
+  [@a1287448852](https://github.com/a1287448852) 的 [CuktechMac10Ultra](https://github.com/a1287448852/CuktechMac10Ultra)
+  （它本身是本项目 macOS 协议实现的衍生版，MIT）。**实现是自己重写的，没有复制源码**，引用写在 [NOTICE](../NOTICE) 与根 README 里
+
 ## 0.1.3 里的变化（社区 PR #4）
 
 [@editwe](https://github.com/editwe) 的 [PR #4](https://github.com/Blank2007/cuktech-ultra-tray/pull/4)

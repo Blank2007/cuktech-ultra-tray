@@ -28,7 +28,7 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 > menu-bar total power, the four-port panel with per-port switches, the QR pairing wizard, C3+A shown as one merged port,
 > and the **privacy notice you must accept on first launch** (same as Windows).
 > The Bluetooth code is fully independent of the UI and its tests run on Linux. macOS has its own version line starting at
-> **0.1.0** instead of following Windows 0.4.x — it is **0.1.3** right now.
+> **0.1.0** instead of following Windows 0.4.x — it is **0.1.6** right now.
 
 ![macOS pairing wizard](docs/mac-wizard.png)
 
