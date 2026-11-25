@@ -282,7 +282,6 @@ extension CBMibleLink: CBCentralManagerDelegate {
                                didDiscover peripheral: CBPeripheral,
                                advertisementData: [String: Any],
                                rssi RSSI: NSNumber) {
-        let sdDebug = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]
         guard let sd = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] else { return }
         var adv: MiBeaconAdvertisement?
         for (_, data) in sd {

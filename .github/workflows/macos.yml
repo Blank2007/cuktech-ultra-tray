@@ -40,6 +40,10 @@ jobs:
           xcodebuild -version
           uname -m
           sw_vers
+      # CuktechBleTests 用的是真机抓的广播字节，只在 macOS 上编得出来（CoreBluetooth），
+      # Linux 那条 job 看不到它——所以这条得在这里跑，否则这组回归测试永远不会执行。
+      - name: swift test (includes macOS-only BLE tests)
+        run: swift test --package-path mac
       - name: build (universal)
         run: bash mac/scripts/build-universal.sh mac
       - name: make app

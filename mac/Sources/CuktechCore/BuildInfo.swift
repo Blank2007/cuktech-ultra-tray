@@ -5,6 +5,7 @@ import Foundation
 /// 硬绑同一个号会让 changelog 变成两边互不相干的内容混在一条。
 /// 产物文件名用 -win / -mac 区分平台，所以重号也不会混。
 public enum BuildInfo {
-    public static let version = "0.1.0"
+    /// 0.1.1：修 macOS 上连不上设备（MiBeacon 广播解析把 `95 FE` 头当必需，而 CoreBluetooth 给的是裸 payload）。
+    public static let version = "0.1.1"
     public static let channel = "mac"
 }
