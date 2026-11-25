@@ -106,7 +106,7 @@ struct PanelView: View {
 
             Toggle("", isOn: Binding(
                 get: { slot.enabled },
-                set: { model.setPort(slot.index, $0) }
+                set: { model.setPort(slot.zeroBasedIndex, $0) }
             ))
             .labelsHidden()
             .toggleStyle(.switch)

@@ -87,20 +87,23 @@ final class FakeDeviceLink: MibleLink, @unchecked Sendable {
         guard let pt = try? AESCCM.open(key: appKey, nonce: nonce, ciphertext: ct, tag: tag, aad: []),
               let req = MiotCodec.parse(pt) else { return }
 
-        // 响应帧：[total][0x20][seq][0][0x03][1][siid][piid][0][tl_lo][tl_hi][len][typeId][value...]
-        var resp = [UInt8](repeating: 0, count: 13 + portValue.count)
+        // 响应帧：GET (0x02) 返回 op=0x03；SET (0x00) 返回 op=0x01 ACK（不含值）
+        let isSet = req.opcode == MiotCodec.opSet
+        var resp = [UInt8](repeating: 0, count: isSet ? 10 : 13 + portValue.count)
         resp[0] = UInt8(resp.count & 0xFF)
         resp[1] = 0x20
         resp[2] = req.seq
-        resp[4] = 0x03
+        resp[4] = isSet ? 0x01 : 0x03
         resp[5] = 0x01
         resp[6] = req.siid
         resp[7] = req.piid
-        resp[9] = UInt8(portValue.count & 0xFF)
-        resp[10] = 0x50
-        resp[11] = UInt8(portValue.count & 0xFF)
-        resp[12] = 0x05
-        for (i, b) in portValue.enumerated() { resp[13 + i] = b }
+        if !isSet {
+            resp[9] = UInt8(portValue.count & 0xFF)
+            resp[10] = 0x50
+            resp[11] = UInt8(portValue.count & 0xFF)
+            resp[12] = 0x05
+            for (i, b) in portValue.enumerated() { resp[13 + i] = b }
+        }
 
         let devNonce = devIv + [0, 0, 0, 0] + [UInt8(devIt & 0xFF), UInt8((devIt >> 8) & 0xFF), UInt8((devIt >> 16) & 0xFF), UInt8((devIt >> 24) & 0xFF)]
         guard let (out, tagOut) = try? AESCCM.seal(key: devKey, nonce: devNonce, plaintext: resp, aad: [], tagLength: 4) else { return }
@@ -160,5 +163,53 @@ final class MibleSessionTests: XCTestCase {
     func testBadTokenLengthRejected() {
         let link = FakeDeviceLink(token: token)
         XCTAssertThrowsError(try MibleSession(link: link, token: [1, 2, 3]))
+    }
+
+    func testSetAckReturnsImmediatelyWithoutOneSecondWait() async throws {
+        let link = FakeDeviceLink(token: token)
+        let session = try MibleSession(link: link, token: token)
+        link.session = session
+
+        try await session.authenticate()
+        let start = Date()
+        let ack = try await session.sendCommand(siid: 2, piid: 5, value: 3, timeout: 4.0)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertNotNil(ack)
+        XCTAssertEqual(ack?.isSetAck, true)
+        XCTAssertLessThan(elapsed, 0.3)
+    }
+
+    func testAsyncCommandMutexSerializesConcurrentCallers() async {
+        let mutex = AsyncCommandMutex()
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            var active = 0
+            var maxObserved = 0
+            func enter() {
+                lock.lock()
+                active += 1
+                maxObserved = max(maxObserved, active)
+                lock.unlock()
+            }
+            func exit() {
+                lock.lock()
+                active -= 1
+                lock.unlock()
+            }
+        }
+        let counter = Counter()
+
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    await mutex.acquire()
+                    counter.enter()
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                    counter.exit()
+                    mutex.release()
+                }
+            }
+        }
+        XCTAssertEqual(counter.maxObserved, 1)
     }
 }

@@ -19,6 +19,12 @@ public actor DeviceSession {
     private var running = false
     private var failures = 0
 
+    /// 串行化命令事务并让用户操作优先抢占后台轮询，防止 Swift actor 重入导致 BLE 通道交错。
+    private var transactionBusy = false
+    private var urgentControlCount = 0
+    private var urgentWaiters: [CheckedContinuation<Void, Never>] = []
+    private var backgroundWaiters: [CheckedContinuation<Void, Never>] = []
+
     public init(mac: [UInt8], token: [UInt8]) {
         self.mac = mac
         self.token = token
@@ -50,11 +56,15 @@ public actor DeviceSession {
                     try await refreshOnce()
                     try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
                 }
+                teardownLink()
                 if running {
                     publish(status: "连接断了，正在重连…", connected: false, error: "设备断开")
                     log("[session] 连接断开，准备重连")
+                    try? await Task.sleep(nanoseconds: 800_000_000)
                 }
             } catch {
+                // 异常退出前必须主动断开旧连接，否则充电器被旧连接占住会停止广播 FE95，后续重连一直扫不到
+                teardownLink()
                 failures += 1
                 let msg = humanize(error)
                 publish(status: "没连上", connected: false, error: msg)
@@ -69,26 +79,37 @@ public actor DeviceSession {
 
     public func stop() {
         running = false
-        link?.disconnect()
-        link = nil
-        mible = nil
+        teardownLink()
     }
 
     /// 立刻重连：丢掉当前会话，让外层循环重新开始。
     public func reconnectNow() {
-        link?.disconnect()
-        link = nil
-        mible = nil
+        teardownLink()
     }
 
     // MARK: - 连接与轮询
 
+    private func teardownLink() {
+        let old = link
+        link = nil
+        mible = nil
+        old?.onNotification = nil
+        old?.onDisconnect = nil
+        old?.onLog = nil
+        old?.disconnect()
+    }
+
     private func connectOnce() async throws {
+        teardownLink()
         publish(status: "正在连接…", connected: false, error: nil)
 
         let l = CBMibleLink()
-        l.onLog = { [weak self] s in Task { await self?.log(s) } }
-        l.onDisconnect = { [weak self] why in Task { await self?.log("[session] 断开：\(why)") } }
+        l.onLog = { [weak self, weak l] s in
+            Task { await self?.handleLinkLog(l, s) }
+        }
+        l.onDisconnect = { [weak self, weak l] why in
+            Task { await self?.handleDisconnect(l, why) }
+        }
         link = l
         mible = nil
 
@@ -116,27 +137,49 @@ public actor DeviceSession {
         try await refreshOnce()
     }
 
+    private func handleLinkLog(_ source: CBMibleLink?, _ msg: String) {
+        guard let source, link === source else { return }
+        log(msg)
+    }
+
+    private func handleDisconnect(_ source: CBMibleLink?, _ why: String) {
+        guard let source, link === source else { return }
+        log("[session] 断开：\(why)")
+    }
+
     private func refreshOnce() async throws {
-        guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+        guard mible?.authenticated == true else { throw MibleError.notAuthenticated }
 
         var snap = snapshot
         snap.connected = true
         snap.status = "已连接"
         snap.error = nil
 
-        if let m = try await s.sendCommand(siid: 2, piid: 16, timeout: 4), let v = m.uintValue {
+        if urgentControlCount > 0 { return }
+        if let m = try await withTransactionLock(urgent: false, {
+            guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+            return try await s.sendCommand(siid: 2, piid: 16, timeout: 4)
+        }), let v = m.uintValue {
             snap.portSwitch = Int(v & 0x0F)
         }
-        if let m = try await s.sendCommand(siid: 2, piid: 5, timeout: 4), let first = m.valueBytes.first {
+
+        if urgentControlCount > 0 { return }
+        if let m = try await withTransactionLock(urgent: false, {
+            guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+            return try await s.sendCommand(siid: 2, piid: 5, timeout: 4)
+        }), let first = m.valueBytes.first {
             snap.sceneMode = Int(first)
         }
 
         var answered = 0
         for i in 0..<4 {
+            if urgentControlCount > 0 { return }
             var slot = snap.ports[i]
             slot.enabled = (snap.portSwitch & (1 << i)) != 0
-            if let m = try await s.sendCommand(siid: 2, piid: UInt16(i + 1), timeout: 2.5),
-               let d = PortData.parse(m.valueBytes) {
+            if let m = try await withTransactionLock(urgent: false, {
+                guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+                return try await s.sendCommand(siid: 2, piid: UInt16(i + 1), timeout: 2.5)
+            }), let d = PortData.parse(m.valueBytes) {
                 slot.apply(d)
                 answered += 1
             }
@@ -154,49 +197,97 @@ public actor DeviceSession {
 
     /// index: 0=C1 1=C2 2=C3 3=USB-A。读-改-写，不会影响其它口。
     public func setPortEnabled(_ index: Int, _ enabled: Bool) async throws {
-        guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
         guard index >= 0 && index < 4 else { throw MibleError.auth("端口序号只能是 0~3") }
 
-        // 先读基线：读失败绝不能按 0 兜底，否则会把其它口一起关掉
-        guard let curMsg = try await s.sendCommand(siid: 2, piid: 16, timeout: 4),
-              let cur = curMsg.uintValue else {
-            throw MibleError.timeout("读取端口开关失败（设备无响应），为了不误关其它口，本次没有写入")
-        }
-        let bit = UInt32(1) << UInt32(index)
-        let next = enabled ? (cur | bit) : (cur & ~bit)
+        urgentControlCount += 1
+        defer { urgentControlCount -= 1 }
 
-        guard try await s.sendCommand(siid: 2, piid: 16, value: next, timeout: 6) != nil else {
-            throw MibleError.timeout("写入端口开关没有收到确认")
+        try await withTransactionLock(urgent: true) {
+            guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+
+            // 先读基线：读失败绝不能按 0 兜底，否则会把其它口一起关掉
+            guard let curMsg = try await s.sendCommand(siid: 2, piid: 16, timeout: 4),
+                  let cur = curMsg.uintValue else {
+                throw MibleError.timeout("读取端口开关失败（设备无响应），为了不误关其它口，本次没有写入")
+            }
+            let bit = UInt32(1) << UInt32(index)
+            let next = enabled ? (cur | bit) : (cur & ~bit)
+
+            guard try await s.sendCommand(siid: 2, piid: 16, value: next, timeout: 6) != nil else {
+                throw MibleError.timeout("写入端口开关没有收到确认")
+            }
+            // 物理开关硬件生效约需 150~250ms，留出稳定时间避免紧接着 GET 读到切换前旧值
+            try? await Task.sleep(nanoseconds: 250_000_000)
+
+            var backMsg = try await s.sendCommand(siid: 2, piid: 16, timeout: 4)
+            if let v = backMsg?.uintValue, v != next {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if let retryMsg = try await s.sendCommand(siid: 2, piid: 16, timeout: 4) {
+                    backMsg = retryMsg
+                }
+            }
+            guard let back = backMsg?.uintValue else {
+                throw MibleError.timeout("已写入，但回读失败，实际状态未知")
+            }
+            snapshot.portSwitch = Int(back & 0x0F)
+            if index < snapshot.ports.count {
+                snapshot.ports[index].enabled = (snapshot.portSwitch & (1 << index)) != 0
+            }
+            onSnapshot?(snapshot)
+            if back != next {
+                throw MibleError.auth(String(format: "设备只接受了 0x%02X（请求 0x%02X），可能是该口不支持", back, next))
+            }
         }
-        guard let backMsg = try await s.sendCommand(siid: 2, piid: 16, timeout: 4),
-              let back = backMsg.uintValue else {
-            throw MibleError.timeout("已写入，但回读失败，实际状态未知")
-        }
-        snapshot.portSwitch = Int(back & 0x0F)
-        if back != next {
-            throw MibleError.auth(String(format: "设备只接受了 0x%02X（请求 0x%02X），可能是该口不支持", back, next))
-        }
-        try? await refreshOnce()
     }
 
     /// 切换充电模式（SIID=2 PIID=5，取值 1~4）。
     public func setSceneMode(_ mode: Int) async throws {
-        guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
         guard mode >= 1 && mode <= 4 else { throw MibleError.auth("充电模式只有 1~4") }
 
-        guard try await s.sendCommand(siid: 2, piid: 5, value: UInt32(mode), timeout: 6) != nil else {
-            throw MibleError.timeout("写入充电模式没有收到确认")
-        }
-        if let m = try await s.sendCommand(siid: 2, piid: 5, timeout: 4), let first = m.valueBytes.first {
-            snapshot.sceneMode = Int(first)
-            if Int(first) != mode {
-                throw MibleError.auth("设备只接受了模式 \(first)（请求 \(mode)）")
+        urgentControlCount += 1
+        defer { urgentControlCount -= 1 }
+
+        try await withTransactionLock(urgent: true) {
+            guard let s = mible, s.authenticated else { throw MibleError.notAuthenticated }
+
+            guard try await s.sendCommand(siid: 2, piid: 5, value: UInt32(mode), timeout: 6) != nil else {
+                throw MibleError.timeout("写入充电模式没有收到确认")
+            }
+            if let m = try await s.sendCommand(siid: 2, piid: 5, timeout: 4), let first = m.valueBytes.first {
+                snapshot.sceneMode = Int(first)
+                onSnapshot?(snapshot)
+                if Int(first) != mode {
+                    throw MibleError.auth("设备只接受了模式 \(first)（请求 \(mode)）")
+                }
             }
         }
-        try? await refreshOnce()
     }
 
     // MARK: - 内部
+
+    private func withTransactionLock<T>(urgent: Bool, _ body: () async throws -> T) async throws -> T {
+        while transactionBusy {
+            await withCheckedContinuation { cont in
+                if urgent {
+                    urgentWaiters.append(cont)
+                } else {
+                    backgroundWaiters.append(cont)
+                }
+            }
+        }
+        transactionBusy = true
+        defer {
+            transactionBusy = false
+            if !urgentWaiters.isEmpty {
+                let next = urgentWaiters.removeFirst()
+                next.resume()
+            } else if !backgroundWaiters.isEmpty {
+                let next = backgroundWaiters.removeFirst()
+                next.resume()
+            }
+        }
+        return try await body()
+    }
 
     private func publish(status: String, connected: Bool, error: String?) {
         var snap = snapshot
