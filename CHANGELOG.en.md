@@ -4,6 +4,109 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.4 — 2026-11-25
+
+Fixes one misleading bit of UI. No new features.
+
+- The "charging mode" header used to carry the **polling interval** switch ("every 1 s") on its right.
+  Two unrelated things on one line read as "the charging mode switches every second", as if the app
+  were changing gears for you. The polling interval is the app's own refresh rate, nothing to do with
+  the charger, so it moved down to the footer next to "重新连接" and now reads "读数 1 秒"; the header
+  now says "点一下切换", making it clear those four tiles are buttons, not live indicators.
+- The current mode also gets a check mark next to the green border, so it reads as **the charger's
+  current gear** rather than a button you just pressed.
+- Also verified the mode does not drift on its own: two screenshots 5 s apart are pixel-identical on
+  firmware 2.1.2_0079. If the border ever moves by itself, the charger really did change modes.
+
+## macOS 0.1.3 — 2026-11-25
+
+The parts of the protocol that are actually controllable — beyond power readings — now have a UI,
+and the capture sample count finally adds up. **Windows is untouched and stays on 0.4.6.**
+
+- **Settings window** (the "设置" button at the bottom of the panel, or "设备设置…" in the right-click
+  menu). These used to be reachable only through the Mi Home app; now you change them next to the menu
+  bar and they're written straight into the charger, so Mi Home sees them too:
+  - **Screen**: screen timeout (1/5/10/30 min, always-on), turn screen off when idle, orientation lock
+  - **Power**: USB-A low-current mode; per-port **fast-charge protocol switches** (C1/C2 have
+    PD / PPS / UFCS, C3/A have UFCS / SCP) — turning one off tells the charger not to negotiate it
+  - **Timers**: per-port auto-cutoff at 15/30 min, 1/2/4 h (0 = off)
+  - Each port row also shows **what it actually negotiated right now** (PIID 17/18, e.g. "PD 70W"),
+    which is what explains the switches above it
+- Settings are read **one GET at a time, and anything that doesn't answer stays nil**: firmwares differ
+  in which properties they expose, so the row says "device didn't answer" and the control is disabled.
+  A failed read is **never** treated as "off" — that would show a fake state and write an unknown value
+  on the first click
+- The protocol mask (PIID 21) is read-modify-write like the port switches: read a baseline first, refuse
+  to write if the read fails, and verify by reading back instead of trusting the ACK
+- **Capture samples now match the clock**: 30 seconds used to yield 25 samples because each loop was
+  "sample, then sleep 1s" while a single GET round-trip costs 0.1–0.3s, so a cycle took ~1.2s. Samples
+  are now scheduled on absolute times (the n-th sample lands n seconds after the start), which absorbs
+  the command latency; the stop check moved ahead of sampling so 30 seconds is exactly 30 samples
+- The countdown menu follows the dark appearance instead of dropping a white sheet on a dark window
+- Unit tests now cover the settings bit offsets and unpacking (one bit off turns off somebody else's
+  protocol), plus the reversed screen-timeout values (1 = 5 min, 5 = 1 min)
+
+## macOS 0.1.2 — 2026-11-25
+
+A handful of small "this feels wrong" fixes on the macOS side, all in one go. **Windows is untouched
+in this release** and stays on 0.4.6.
+
+- **The panel can be pinned now**: there is a pin button in the top-right corner. Unpinned, the panel
+  **closes as soon as you click anywhere outside it**. Pinned, it stays put when you switch to another
+  app and works as a small always-on window
+- **"Close on outside click" needed a second safety net**: `.transient` fires when the popover window
+  resigns key, but a menu-bar app is usually **not active** while its panel is up (keyboard focus is
+  still in whatever app you were using), so the click outside never produces a resignKey and the panel
+  just sits there. It now also watches mouse-down events (one global and one local monitor, covering
+  "clicked another app" and "clicked another window of ours") and dismisses on any click outside; the
+  status item's own rect is excluded and left to the toggle, so a "click to close" doesn't turn into
+  close-then-reopen flicker
+- **Clicking the status item again closes the panel**: with the panel open, one click on the icon now
+  dismisses it instead of reopening it, so there's no flicker
+- The panel is more compact: the big gap that used to sit between the charging-mode grid and the
+  "Reconnect / Quit" row is gone, dropping the height from 486 to 424
+- The panel footer gained "**About**" (Reconnect on the left; About / Quit on the right), and the
+  right-click menu entry was shortened to just "About"
+- A **polling interval** control now sits at the right end of the "Charging mode" row
+  (1/2/3/5/10 s). Previously the only way to change `pollInterval` was hand-editing `config.json`;
+  it now applies immediately and is written back to the config
+- Fixed a "looks broken" detail: when the panel pops up while the app is not yet active, the system
+  switch renders in the **inactive gray-green**, only turning blue after you click inside the panel.
+  The switch is now drawn by the app, so its color no longer depends on window activation
+- Fixed an **off-by-one in the port switches**: the panel hands over 1–4 (C1/C2/C3/A) while the
+  session API is 0-based, and the value used to be passed straight through — clicking C1 disabled
+  C2, and clicking A failed with "port index must be 0–3"
+- Polling and the "switch / mode" writes now **queue on the command channel**: they used to
+  interleave, the device would swallow the later commands, and you got "written but read-back
+  timed out" or "no port answered" — occasionally dropping the link too
+- Turning off "show watts in the menu bar" now shows a **bolt icon** instead of the character 「瓦」
+  (SF Symbol `bolt.fill` + `isTemplate`, so it inverts with light/dark menu bars). Hovering still shows the
+  live reading
+- The right-click menu gained "**About CUKTECH Power Meter…**": version, a link to the GitHub repo, and
+  an **update check**. The window itself is just the version block plus two buttons — the result row
+  only **unfolds after you press "Check for Updates"** (top edge stays put, the window grows downward),
+  with an inline "Download" when a newer build exists. The old explanatory paragraphs and the "OK"
+  button are gone; the red traffic light closes it
+- The update check **only touches the network when you click "Check for Updates"**: opening the About
+  window sends no requests at all. The unauthenticated GitHub API allows 60 requests per hour per IP, so an
+  automatic check burns that quota just for glancing at the version number — and hits the limit easily
+- It compares the release asset name `CuktechTray-<version>-mac.zip` and **ignores the tag** — tags follow
+  the Windows version (v0.4.x), so comparing tags would report "new version available" on every check.
+  On a 403 rate limit it converts `x-ratelimit-reset` into local time and says when to retry
+- **Per-port capture**: each port row has a small waveform button. One click starts reading that
+  port once a second; the header shows elapsed time, Wh so far and average watts live, and the
+  button turns red to stop
+- Capture **ends** after 30 s with no output from that port, 30 s with no data at all, a dropped
+  link, or a manual stop. A small window then shows Wh, average and peak power, active duration,
+  voltage range with rail-change count, and sample count. The numbers live **in memory only** —
+  closing the window discards them, nothing is written to disk or to the log
+- Energy is **integrated per rail**: trapezoidal while the voltage stays put, and on a rail change
+  the old power is used for that last second. Averaging 5V→20V as 12.5V would overstate that
+  second by more than double; the conservative choice under-reports slightly but never inflates
+- Normal polling steps aside during a capture: two command streams on one channel make the device
+  swallow later commands, which is what used to produce "written but read-back timed out"
+- Version 0.1.1 → 0.1.2
+
 ## macOS 0.1.1 — 2026-11-25
 
 A macOS-only release: **0.1.0 could not connect to the charger at all on real hardware**, and the bug was in the

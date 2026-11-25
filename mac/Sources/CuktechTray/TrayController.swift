@@ -29,6 +29,7 @@ final class TrayController: NSObject {
         buildMenu()
         wireStatusItemButton()
         wirePanel()
+        SettingsController.shared.onLog = { [weak self] line in self?.log.write(line) }
         updateTitle()
     }
 
@@ -65,10 +66,12 @@ final class TrayController: NSObject {
         guard let mac = settings.macBytes, let token = settings.tokenBytes else {
             log.write("[tray] 还没配对：\(AppSettings.fileURL.path) 里缺 mac 或 token")
             statusLineItem.title = "还没配对，右键「重新配对…」走一遍向导"
+            SettingsController.shared.attach(session: nil)
             return
         }
         let s = DeviceSession(mac: mac, token: token)
         session = s
+        SettingsController.shared.attach(session: s)
         let poll = settings.pollInterval
         let logger = log
         Task {
@@ -87,9 +90,21 @@ final class TrayController: NSObject {
             refreshMenuStatus()
         }
         panel.model.snapshot = snap
+        SettingsController.shared.setConnected(snap.connected)
     }
 
     // MARK: - 菜单栏标题
+
+    /// 关掉「菜单栏显示功率数字」时显示的那个图标。
+    /// 以前这里塞的是「瓦」这个字，挤在菜单栏里像坏掉的标签；换成闪电模板图，
+    /// 跟 App 图标上的闪电对应，深浅色菜单栏都会自动反色（isTemplate）。
+    private static let boltIcon: NSImage? = {
+        let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        guard let img = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "酷态科功率表")?
+            .withSymbolConfiguration(cfg) else { return nil }
+        img.isTemplate = true
+        return img
+    }()
 
     private func updateTitle() {
         guard let button = statusItem.button else { return }
@@ -97,8 +112,18 @@ final class TrayController: NSObject {
         var color = NSColor.secondaryLabelColor
 
         if !settings.showWattsInMenuBar {
-            text = "瓦"
-        } else if snapshot.connected {
+            button.image = Self.boltIcon
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+            button.attributedTitle = NSAttributedString(string: "")
+            button.toolTip = snapshot.connected ? snapshot.headline : "酷态科 10 号 Ultra · \(snapshot.status)"
+            return
+        }
+
+        button.image = nil
+        button.imagePosition = .noImage
+
+        if snapshot.connected {
             text = snapshot.totalText
             let c = snapshot.totalColor
             color = NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: 1)
@@ -135,6 +160,7 @@ final class TrayController: NSObject {
         menu.addItem(.separator())
 
         menu.addItem(item("显示功率面板", #selector(showPanel)))
+        menu.addItem(item("设备设置…", #selector(showSettings)))
         menu.addItem(item("重新连接", #selector(reconnect)))
         menu.addItem(item("重新配对…", #selector(runWizard)))
         menu.addItem(.separator())
@@ -146,6 +172,8 @@ final class TrayController: NSObject {
         menu.addItem(.separator())
         menu.addItem(item("打开日志", #selector(openLog)))
         menu.addItem(item("显示配置文件", #selector(showConfig)))
+        menu.addItem(.separator())
+        menu.addItem(item("关于", #selector(showAbout)))
         menu.addItem(.separator())
         menu.addItem(item("退出", #selector(quit)))
 
@@ -164,6 +192,8 @@ final class TrayController: NSObject {
         let isSecondary = event?.type == .rightMouseUp
             || (event?.modifierFlags.contains(.control) ?? false)
         if isSecondary {
+            // 右键是「要菜单」，面板留着会被菜单压住还挡视线，先收起来
+            panel.close()
             // 临时挂上菜单再点一次，让 AppKit 把它弹在正确位置；弹完立刻摘掉
             statusItem.menu = statusMenu
             statusItem.button?.performClick(nil)
@@ -181,6 +211,12 @@ final class TrayController: NSObject {
 
     @objc private func showPanel() {
         panel.toggle(relativeTo: statusItem.button)
+    }
+
+    /// 菜单栏右键进来的设置面板。先把功率面板收起来，免得两个浮窗叠在一起。
+    @objc private func showSettings() {
+        panel.close()
+        SettingsController.shared.show()
     }
 
     @objc private func reconnect() {
@@ -232,6 +268,10 @@ final class TrayController: NSObject {
         NSWorkspace.shared.activateFileViewerSelecting([AppSettings.fileURL])
     }
 
+    @objc private func showAbout() {
+        AboutController.shared.show()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -243,13 +283,92 @@ final class TrayController: NSObject {
         panel.model.onQuit = { NSApp.terminate(nil) }
         panel.model.onSetPort = { [weak self] index, on in self?.setPort(index, on) }
         panel.model.onSetScene = { [weak self] mode in self?.setScene(mode) }
+        panel.model.pollInterval = settings.pollInterval
+
+        // 面板底部「关于」：先把面板收起来，否则 transient popover 会被新窗口顶掉，
+        // 看起来像闪了一下又没了。
+        panel.model.onShowAbout = { [weak self] in
+            self?.panel.close()
+            AboutController.shared.show()
+        }
+
+        panel.model.onShowSettings = { [weak self] in
+            self?.panel.close()
+            SettingsController.shared.show()
+        }
+
+        panel.model.onPollIntervalChanged = { [weak self] v in
+            guard let self else { return }
+            self.settings.pollInterval = v
+            do {
+                try self.settings.save()
+            } catch {
+                self.log.write("[panel] 保存轮询间隔失败：\(error)")
+            }
+            self.log.write("[panel] 轮询间隔 -> \(v)s")
+            if let s = self.session {
+                Task { await s.setPollInterval(v) }
+            }
+        }
+
+        panel.model.onStartCapture = { [weak self] port in self?.startCapture(port) }
+        panel.model.onStopCapture = { [weak self] in
+            guard let s = self?.session else { return }
+            Task { await s.stopCapture() }
+        }
     }
 
+    // MARK: - 单口采集
+
+    /// 采集跑在 DeviceSession 里（它握着命令通道和连接状态）。
+    /// 这里只负责把每秒的累计值推到面板、结束时弹结果窗。
+    private func startCapture(_ port: Int) {
+        guard let s = session, panel.model.capturePort == nil else { return }
+        guard panel.model.snapshot.connected else {
+            panel.model.captureStats = nil
+            panel.model.captureStartedAt = nil
+            return
+        }
+        panel.model.capturePort = port
+        panel.model.captureStats = CaptureAccumulator()
+        panel.model.captureStartedAt = Date()
+        log.write("[capture] 开始采集 \(PortData.portName(port))")
+
+        Task { @MainActor in
+            await s.startCapture(
+                port: port,
+                onUpdate: { acc in
+                    Task { @MainActor in
+                        guard self.panel.model.capturePort == port else { return }
+                        self.panel.model.captureStats = acc
+                    }
+                },
+                onFinish: { result in
+                    Task { @MainActor in self.finishCapture(result) }
+                })
+        }
+    }
+
+    private func finishCapture(_ result: CaptureResult) {
+        panel.model.capturePort = nil
+        panel.model.captureStats = nil
+        panel.model.captureStartedAt = nil
+        panel.close()
+        log.write("[capture] 结果 \(result.energyText)Wh / 平均 \(result.averageText)W，"
+                  + "有效 \(result.activeDurationText)，\(result.reason.shortText)")
+        CaptureResultController.shared.show(result)
+    }
+
+    /// - Parameter index: 面板给的是 1..4（C1/C2/C3/A），会话那边是 0-based，这里换算。
+    ///   之前直接透传，结果点 C1 改的其实是 C2、点 A 直接撞「序号只能是 0~3」。
     private func setPort(_ index: Int, _ on: Bool) {
-        guard let s = session else { return }
+        guard let s = session, (1...4).contains(index) else {
+            panel.model.busy = false
+            return
+        }
         Task { @MainActor in
             do {
-                try await s.setPortEnabled(index, on)
+                try await s.setPortEnabled(index - 1, on)
             } catch {
                 self.log.write("[panel] 设置端口 \(index) 失败：\(error)")
             }
