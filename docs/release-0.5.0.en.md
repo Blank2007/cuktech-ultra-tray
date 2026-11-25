@@ -59,7 +59,7 @@ The two platforms still number their versions independently.
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.0-win.exe` | **11,064,320 bytes (10.55 MiB)** | Windows: portable and installer in one file; 165,376 bytes more than 0.4.7 (three new windows plus protocol reads/writes) |
-| `CuktechTray-0.1.3-mac.zip` | see the release assets | macOS 13+: unpacks to `CuktechTray.app` (universal, ad-hoc signed), see [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.3-mac.zip` | 1,531,590 bytes (1.46 MiB) | macOS 13+: unpacks to `CuktechTray.app` (universal, ad-hoc signed), see [mac/README.md](../mac/README.md) |
 
 ## Verification
 
@@ -67,9 +67,13 @@ The two platforms still number their versions independently.
 File   CuktechTray-0.5.0-win.exe   (the local build calls it CuktechTray.exe, same file)
 Size   11,064,320 bytes
 SHA256 7DC069BDB4266003915D66A6F98A625C65392DA4E35AC33BB64FD97C43CDE4CE
+
+File   CuktechTray-0.1.3-mac.zip   (universal bundle built by CI on macos-26-intel)
+Size   1,531,590 bytes (1.46 MiB)
+SHA256 DF41F0DC0916FAAD71C08B4AAF5C240A8A5B231273F822C0DCAD7AA5ABF6C042
 ```
 
-On Windows compare with `Get-FileHash .\CuktechTray-0.5.0-win.exe -Algorithm SHA256`; the GitHub asset page also shows the digest.
+On Windows compare with `Get-FileHash .\CuktechTray-0.5.0-win.exe -Algorithm SHA256`, on macOS with `shasum -a 256 CuktechTray-0.1.3-mac.zip`; the GitHub asset page also shows the digest.
 
 ## Requirements
 

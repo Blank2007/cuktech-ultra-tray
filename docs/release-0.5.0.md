@@ -53,7 +53,7 @@ macOS 侧同时把那条 PR 合了，发 **0.1.3**。两个平台的版本号还
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.0-win.exe` | **11,064,320 字节（10.55 MiB）** | Windows：绿色版 + 安装器二合一；比 0.4.7 多 165,376 字节（三个新窗口 + 协议读写） |
-| `CuktechTray-0.1.3-mac.zip` | 见 Release 资产页 | macOS 13+：解压出 `CuktechTray.app`（universal，ad-hoc 签名），说明见 [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.3-mac.zip` | 1,531,590 字节（1.46 MiB） | macOS 13+：解压出 `CuktechTray.app`（universal，ad-hoc 签名），说明见 [mac/README.md](../mac/README.md) |
 
 ## 校验
 
@@ -61,9 +61,13 @@ macOS 侧同时把那条 PR 合了，发 **0.1.3**。两个平台的版本号还
 文件   CuktechTray-0.5.0-win.exe   （本地 build 出来叫 CuktechTray.exe，同一个文件）
 大小   11,064,320 字节
 SHA256 7DC069BDB4266003915D66A6F98A625C65392DA4E35AC33BB64FD97C43CDE4CE
+
+文件   CuktechTray-0.1.3-mac.zip   （CI 在 macos-26-intel 上编的 universal 包）
+大小   1,531,590 字节（1.46 MiB）
+SHA256 DF41F0DC0916FAAD71C08B4AAF5C240A8A5B231273F822C0DCAD7AA5ABF6C042
 ```
 
-Windows 用 `Get-FileHash .\CuktechTray-0.5.0-win.exe -Algorithm SHA256` 对着看；GitHub 的资产页也会直接显示 digest。
+Windows 用 `Get-FileHash .\CuktechTray-0.5.0-win.exe -Algorithm SHA256`、macOS 用 `shasum -a 256 CuktechTray-0.1.3-mac.zip` 对着看；GitHub 的资产页也会直接显示 digest。
 
 ## 系统要求
 
