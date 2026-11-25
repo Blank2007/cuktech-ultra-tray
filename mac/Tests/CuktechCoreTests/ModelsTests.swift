@@ -67,8 +67,9 @@ final class ModelsTests: XCTestCase {
 
         XCTAssertTrue(snap.pairMerged)
         XCTAssertEqual(snap.mergedOwner, 3)
-        // 0.4A × 5.1V = 2.04W：这一对只算一次，不能把两路加起来
-        XCTAssertEqual(snap.totalWatts, 2.04, accuracy: 0.001)
+        // 0.4A × 5.1V = 2.04W，PortData.power 按 0.1W 量化成 2.0W（见 MiotCodec.swift 的 power）；
+        // 要点是这一对只算一次，不能把两路加起来再翻成 4.0W
+        XCTAssertEqual(snap.totalWatts, 2.0, accuracy: 0.001)
         XCTAssertEqual(snap.totalText, "2.0W")
 
         XCTAssertEqual(snap.rowName(snap.ports[2]), "C3+A")
@@ -102,7 +103,7 @@ final class ModelsTests: XCTestCase {
 
         XCTAssertTrue(snap.pairMerged)
         XCTAssertEqual(snap.mergedOwner, 3)
-        XCTAssertEqual(snap.totalWatts, 2.04, accuracy: 0.001)
+        XCTAssertEqual(snap.totalWatts, 2.0, accuracy: 0.001)
         XCTAssertEqual(snap.rowDetail(snap.ports[3]), "并入 C3+A")
     }
 
@@ -118,7 +119,7 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(snap.rowDetail(snap.ports[3]), "空载")
         XCTAssertEqual(snap.rowWattsText(snap.ports[3]), "0.0W")
         XCTAssertFalse(snap.isMergedPassenger(snap.ports[3]))
-        XCTAssertEqual(snap.totalWatts, 2.04, accuracy: 0.001)
+        XCTAssertEqual(snap.totalWatts, 2.0, accuracy: 0.001)
     }
 
     /// 首帧还没来（没有 hasData）不算合并。
