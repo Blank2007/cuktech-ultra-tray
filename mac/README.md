@@ -45,7 +45,11 @@ macOS 会拦一下：
 xattr -dr com.apple.quarantine /Applications/CuktechTray.app
 ```
 
-第一次启动会问蓝牙权限，必须给，否则只能显示「未配对」。
+第一次启动会问蓝牙权限，必须给，否则状态栏只会显示 `—`。点掉那个弹窗之前程序会一直等
+（最多 30 秒，之后再进入重试退避），所以「先看到 `—`、允许之后才出数字」是正常的。
+
+> 每次重新构建、重新签名（ad-hoc 签名每次都会变）之后，系统会再问一次蓝牙权限，
+> 因为 macOS 把 App 当成新的二进制看待。用官方 zip 的用户只会在第一次见到这个弹窗。
 
 ---
 
@@ -70,8 +74,9 @@ FE95 广播，用广播里反解出来的地址补上。实在不行还有「手
 ## 日常
 
 - 菜单栏上那串数字就是四口总功率，颜色按档走：灰 ≈0W、淡蓝 0–20W、绿 20–60W、黄 60–100W、红 100W 以上；
-- **点一下**数字：弹出面板（四路读数、每路的开关、四种充电模式）；
-- **右键**：显示功率面板 / 重新连接 / 重新配对… / 菜单栏显示功率数字 / 打开日志 / 显示配置文件 / 退出；
+- **左键点一下**数字：弹出面板（四路读数、每路的开关、四种充电模式）；
+- **右键**：弹菜单 —— 显示功率面板 / 重新连接 / 重新配对… / 菜单栏显示功率数字 / 打开日志 / 显示配置文件 / 退出；
+- 面板里的开关是「读 → 改 → 写 → 回读确认」，写失败会回退，不会把别的口一起关掉；
 - 断开或者走远了会自动重连，重连不上就先显示 `—`。
 
 ---
@@ -114,6 +119,10 @@ open dist/CuktechTray.app
 ```
 
 只想编本机架构的话直接 `swift build -c release --package-path mac` 也行。
+
+`make-app.sh` 会顺手跑 `scripts/make-icon.swift` 现画一套 `AppIcon.iconset`，再用 `iconutil`
+打成 `AppIcon.icns` 塞进 `Contents/Resources`。图标是**构建时生成**的，仓库里不放 `.icns`：
+二进制进 git 没法 review，改配色就得重新导出一堆 PNG。想换图标只改那个脚本里的两个颜色常量。
 （`build-universal.sh` 存在的理由：GitHub 的 arm64 runner 排队经常被取消，所以 CI 固定用
 Intel runner 编两个架构——SwiftPM 多 `--arch` 的产物落在 `.build/apple/Products/Release/`，
 脚本负责把它挪回 `.build/release/`。）
@@ -138,13 +147,30 @@ mac/
   Sources/CuktechBle/          CoreBluetooth：连接、认证、扫描
   Sources/CuktechTray/         菜单栏 App：状态栏、面板、向导
   Tests/CuktechCoreTests/      单元测试（黄金向量、协议、云端解析）
+  Tests/CuktechBleTests/       广播解析回归测试（只在 macOS 上编译）
   scripts/build-universal.sh   在单台机器上编 universal（arm64 + x86_64）
-  scripts/make-app.sh          组装 .app 并签名
+  scripts/make-app.sh          组装 .app、生成图标并签名
+  scripts/make-icon.swift      画 AppIcon.iconset（构建时调用）
   scripts/package.sh           打成 CuktechTray-<版本>-mac.zip
   Resources/Info.plist         包信息（LSUIElement、蓝牙权限说明）
 ```
 
 ---
+
+## 出问题了看这里
+
+日志在 `~/Library/Application Support/CuktechTray/tray.log`（右键菜单「打开日志」），
+认证每一步、每次重连、每次写入口都记在里面。
+
+| 现象 | 原因 / 处理 |
+|---|---|
+| 状态栏一直是 `—`，日志里反复出现 `扫不到 MAC 为 … 的广播` | 0.1.0 的已知 bug，已在当前代码里修掉：MiBeacon 广播解析把 `95 FE` 服务 UUID 头当成必需的，但 macOS 通过 `CBAdvertisementDataServiceDataKey` 给的是**裸 payload**（`10 59 0E 66 00 30 8B 31 73 CD 3C`），于是永远解析失败。更新到修复后的版本即可；自己编译的话 `swift test` 里有一条用真机字节写的回归测试 |
+| 日志 `蓝牙 30 秒内没就绪` | 授权弹窗没点，或「系统设置 → 隐私与安全性 → 蓝牙」里没勾上本程序 |
+| `central state=4` / 一直重启扫描 | 蓝牙关着（state 4 是 poweredOff），打开蓝牙 |
+| 连上但读数是 0，日志 `四个端口都没有应答` | 手机上的米家正连着这台充电器。BLE 同时只允许一个中心，把米家退到后台或关掉手机蓝牙 |
+| `认证结果` 不是 0x21，或 HMAC 校验失败 | token 不对/已过期：设备被解绑或换绑过。右键「重新配对…」重扫一次 |
+| 面板开关点了弹回原状 | 写入口失败（设备忙或有负载）。读-改-写带回读校验，失败会回退并写日志 |
+| 重新编译后菜单栏不见了 | ad-hoc 签名每次构建都会变，系统重新要一次蓝牙权限；允许后即可 |
 
 ## 已知限制
 

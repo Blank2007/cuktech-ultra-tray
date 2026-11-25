@@ -31,6 +31,8 @@ var targets: [Target] = [
 products.append(.executable(name: "CuktechTray", targets: ["CuktechTray"]))
 targets.append(.target(name: "CuktechBle", dependencies: ["CuktechCore"], path: "Sources/CuktechBle"))
 targets.append(.executableTarget(name: "CuktechTray", dependencies: ["CuktechCore", "CuktechBle"], path: "Sources/CuktechTray"))
+// 广播解析依赖 CoreBluetooth，只能在 macOS 上跑；Linux 那条 job 不会编译到它。
+targets.append(.testTarget(name: "CuktechBleTests", dependencies: ["CuktechBle"], path: "Tests/CuktechBleTests"))
 #endif
 
 let package = Package(
