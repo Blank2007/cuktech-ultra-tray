@@ -75,7 +75,7 @@ about it" into a real **"you must agree on first launch"** gate that writes noth
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.4.7-win.exe` | **10,898,944 bytes (10.39 MiB)** | Windows: portable build and installer in one; 16,896 bytes more than 0.4.6 (consent window + merged display) |
-| `CuktechTray-0.1.2-mac.zip` | __MAC_SIZE__ | macOS 13+: unzips to `CuktechTray.app` (universal, Intel / Apple Silicon, ad-hoc signed, icon included); see [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.2-mac.zip` | 1,073,719 字节（1.02 MiB） | macOS 13+: unzips to `CuktechTray.app` (universal, Intel / Apple Silicon, ad-hoc signed, icon included); see [mac/README.md](../mac/README.md) |
 
 ## Checksums
 
@@ -85,8 +85,8 @@ size   10,898,944 bytes
 SHA256 60F3E377F3D6548EF22B06831C8F63372C6246748A00B71185B78EEE1794FF25
 
 file   CuktechTray-0.1.2-mac.zip   (universal build produced by CI on macos-26-intel)
-size   __MAC_SIZE__
-SHA256 __MAC_SHA__
+size   1,073,719 字节（1.02 MiB）
+SHA256 617B958A7AB153E5CBFF9767948B0655669EA6070847A336EE120E532B6B59CA
 ```
 
 On Windows use `Get-FileHash .\CuktechTray-0.4.7-win.exe -Algorithm SHA256`, on macOS

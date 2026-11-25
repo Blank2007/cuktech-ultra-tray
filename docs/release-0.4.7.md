@@ -62,7 +62,7 @@ macOS 版同步发 **0.1.2**，并合了社区那条 PR。
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.4.7-win.exe` | **10,898,944 字节（10.39 MiB）** | Windows：绿色版 + 安装器二合一；比 0.4.6 多 16,896 字节（同意窗口 + 合并显示） |
-| `CuktechTray-0.1.2-mac.zip` | __MAC_SIZE__ | macOS 13+：解压出 `CuktechTray.app`（universal，Intel / Apple Silicon 都能跑，ad-hoc 签名，自带图标），说明见 [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.2-mac.zip` | 1,073,719 字节（1.02 MiB） | macOS 13+：解压出 `CuktechTray.app`（universal，Intel / Apple Silicon 都能跑，ad-hoc 签名，自带图标），说明见 [mac/README.md](../mac/README.md) |
 
 ## 校验
 
@@ -72,8 +72,8 @@ macOS 版同步发 **0.1.2**，并合了社区那条 PR。
 SHA256 60F3E377F3D6548EF22B06831C8F63372C6246748A00B71185B78EEE1794FF25
 
 文件   CuktechTray-0.1.2-mac.zip   （CI 在 macos-26-intel 上编的 universal 包）
-大小   __MAC_SIZE__
-SHA256 __MAC_SHA__
+大小   1,073,719 字节（1.02 MiB）
+SHA256 617B958A7AB153E5CBFF9767948B0655669EA6070847A336EE120E532B6B59CA
 ```
 
 Windows 用 `Get-FileHash .\CuktechTray-0.4.7-win.exe -Algorithm SHA256`、macOS 用
