@@ -15,6 +15,8 @@ final class TrayController: NSObject {
     private var session: DeviceSession?
     private var snapshot = DeviceSnapshot()
     private var ticker: Task<Void, Never>?
+    /// 上次因系统唤醒而重连的时间，用来给 dark wake 限速。
+    private var lastWakeReconnect: Date?
     private var statusLineItem: NSMenuItem!
     private var wattsItem: NSMenuItem!
     /// 右键菜单。左键不弹它——左键直接开面板（README 一直是这么写的，
@@ -39,6 +41,11 @@ final class TrayController: NSObject {
         log.write("[tray] 启动 version=\(BuildInfo.version) config=\(AppSettings.fileURL.path)")
         bootSession()
 
+        // 合盖睡眠再打开时，蓝牙栈往往要重启一遍（日志里能看到 state 在 4/5 之间来回跳
+        // 好几分钟），链路一定是断的。这里醒来后主动重连一次，比等轮询超时再退避快得多。
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -49,6 +56,16 @@ final class TrayController: NSObject {
                 try? await Task.sleep(nanoseconds: 400_000_000)
             }
         }
+    }
+
+    @objc private func didWake() {
+        guard let s = session else { return }
+        // 有些机器在睡眠期间会有多次 dark wake，这里限个速，免得每 30 秒重建一次连接。
+        let now = Date()
+        if let last = lastWakeReconnect, now.timeIntervalSince(last) < 60 { return }
+        lastWakeReconnect = now
+        log.write("[tray] 系统唤醒，重新建立连接")
+        Task { await s.reconnectNow() }
     }
 
     func shutdown() {
@@ -69,7 +86,8 @@ final class TrayController: NSObject {
             SettingsController.shared.attach(session: nil)
             return
         }
-        let s = DeviceSession(mac: mac, token: token)
+        let known = settings.peripheralId.flatMap { UUID(uuidString: $0) }
+        let s = DeviceSession(mac: mac, token: token, knownPeripheral: known)
         session = s
         SettingsController.shared.attach(session: s)
         let poll = settings.pollInterval
@@ -77,6 +95,14 @@ final class TrayController: NSObject {
         Task {
             await s.setPollInterval(poll)
             await s.setLogHandler { line in logger.write(line) }
+            await s.setPeripheralHandler { [weak self] id in
+                // 记下来，下次设备「已连接但不再广播」时就能认出是哪一台。
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.settings.peripheralId = id.uuidString
+                    try? self.settings.save()
+                }
+            }
             await s.start()
         }
     }

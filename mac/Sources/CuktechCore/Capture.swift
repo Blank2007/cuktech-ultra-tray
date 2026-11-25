@@ -18,12 +18,18 @@ public struct CaptureAccumulator: Sendable {
     public private(set) var energyWh: Double = 0
     /// 峰值功率（W）。
     public private(set) var peakPower: Double = 0
+    /// 峰值电流（A）。只统计真正在输出的样本，空载那 30 秒的 0.00A 不算。
+    public private(set) var peakCurrent: Double = 0
     /// 有效时长：真正在输出的秒数（空载的那些秒不计）。
     public private(set) var effectiveSeconds: Double = 0
     /// 电压档位跳变次数（差值 ≥ 0.5V 记一次）。
     public private(set) var voltageChanges = 0
     public private(set) var minVoltage: Double?
     public private(set) var maxVoltage: Double?
+    /// 电压、电流按时间加权累计（V·s、A·s），除以 `effectiveSeconds` 就是平均值。
+    /// 和能量走同一个分段（跨档那段用跳变前的值），所以 平均值 × 平均值 与平均功率同口径。
+    public private(set) var voltSeconds: Double = 0
+    public private(set) var ampSeconds: Double = 0
     public private(set) var lastVoltage: Double = 0
     public private(set) var lastCurrent: Double = 0
     public private(set) var lastPower: Double = 0
@@ -31,7 +37,7 @@ public struct CaptureAccumulator: Sendable {
     public private(set) var firstActiveAt: Date?
     public private(set) var lastActiveAt: Date?
 
-    private var prev: (v: Double, i: Double, t: Date)?
+    private var prev: (v: Double, i: Double, t: Date, active: Bool)?
 
     public init() {}
 
@@ -47,6 +53,19 @@ public struct CaptureAccumulator: Sendable {
         lastVoltage * lastCurrent > 0.05 && lastVoltage > 0.05
     }
 
+    /// 时间加权的平均电压（V）。和电流表那种「平均电压」同口径：按输出时长平均，
+    /// 不是简单把每秒读数相加再除以次数——两者在空载段长度不同时会差很多。
+    public var averageVoltage: Double {
+        guard effectiveSeconds > 0.5 else { return 0 }
+        return voltSeconds / effectiveSeconds
+    }
+
+    /// 时间加权的平均电流（A）。
+    public var averageCurrent: Double {
+        guard effectiveSeconds > 0.5 else { return 0 }
+        return ampSeconds / effectiveSeconds
+    }
+
     public var hasAnyData: Bool { sampleCount > 0 }
 
     public mutating func add(_ d: PortData, at t: Date) {
@@ -59,13 +78,12 @@ public struct CaptureAccumulator: Sendable {
         lastCurrent = d.current
         lastPower = power
 
-        if d.voltage > 0.05 {
-            minVoltage = min(minVoltage ?? d.voltage, d.voltage)
-            maxVoltage = max(maxVoltage ?? d.voltage, d.voltage)
-        }
-
         if active {
             peakPower = max(peakPower, power)
+            peakCurrent = max(peakCurrent, d.current)
+            // 电压上下限也只统计带载样本：空口的 5V 待机电、拔线后的 0V 都不是「充进去的时候用了多少伏」。
+            minVoltage = min(minVoltage ?? d.voltage, d.voltage)
+            maxVoltage = max(maxVoltage ?? d.voltage, d.voltage)
             if firstActiveAt == nil { firstActiveAt = t }
             lastActiveAt = t
         }
@@ -79,10 +97,19 @@ public struct CaptureAccumulator: Sendable {
                 let avgW = sameRail ? (wPrev + power) / 2 : wPrev
                 energyWh += avgW * dt / 3600
                 effectiveSeconds += dt
+                // 电压/电流用同一套分段：同档位取两端平均，跨档取跳变前的值。
+                // 这样 平均电压 × 平均电流 与平均功率口径一致，不会出现「电压电流都偏高、
+                // 乘积却比功率大一大截」的怪现象。
+                let vSeg = sameRail ? (p.v + d.voltage) / 2 : p.v
+                let iSeg = sameRail ? (p.i + d.current) / 2 : p.i
+                voltSeconds += vSeg * dt
+                ampSeconds += iSeg * dt
             }
         }
-        if let p = prev, abs(d.voltage - p.v) >= 0.5 { voltageChanges += 1 }
-        prev = (d.voltage, d.current, t)
+        // 换档只在「前后两次都有输出」时才算：拔线/充满那一刻电压会掉到 0，
+        // 9.1V→0V 差得比谁都多，但它不是换档（第一版就把它算成了一次）。
+        if let p = prev, active, p.active, abs(d.voltage - p.v) >= 0.5 { voltageChanges += 1 }
+        prev = (d.voltage, d.current, t, active)
     }
 }
 
@@ -147,6 +174,34 @@ public struct CaptureResult: Sendable {
     public var energyText: String { String(format: "%.2f", stats.energyWh) }
     public var averageText: String { String(format: "%.1f", stats.averagePower) }
     public var peakText: String { String(format: "%.1f", stats.peakPower) }
+    /// 没有带载样本时（空口采集）这些数字就是 0，直接显示「—」比显示 0.00 V 更老实。
+    public var averageVoltageText: String {
+        stats.averageVoltage > 0.05 ? String(format: "%.2f", stats.averageVoltage) : "—"
+    }
+    public var averageCurrentText: String {
+        stats.averageCurrent > 0.005 ? String(format: "%.2f", stats.averageCurrent) : "—"
+    }
+    public var peakCurrentText: String {
+        stats.peakCurrent > 0.005 ? String(format: "%.2f", stats.peakCurrent) : "—"
+    }
+    public var peakVoltageText: String {
+        stats.maxVoltage.map { String(format: "%.2f", $0) } ?? "—"
+    }
+    /// 电压真的跨过档位（最小和最大差得明显）时，才额外显示一行「电压区间」，
+    /// 否则它跟上面的「平均/最大电压」是同一条信息。
+    public var spansRails: Bool {
+        guard let lo = stats.minVoltage, let hi = stats.maxVoltage else { return false }
+        return abs(hi - lo) >= 0.3
+    }
+    /// 平均电压带上最大值，和电流表读数对得上。
+    public var voltageDetailText: String {
+        guard stats.averageVoltage > 0.05 else { return "—" }
+        return "\(averageVoltageText) V（最大 \(peakVoltageText) V）"
+    }
+    public var currentDetailText: String {
+        guard stats.averageCurrent > 0.005 else { return "—" }
+        return "\(averageCurrentText) A（最大 \(peakCurrentText) A）"
+    }
 
     public var voltageText: String {
         guard let lo = stats.minVoltage, let hi = stats.maxVoltage else { return "—" }
@@ -176,6 +231,8 @@ public struct CaptureResult: Sendable {
         lines.append("充入电量：\(energyText) Wh")
         lines.append("平均功率：\(averageText) W")
         lines.append("峰值功率：\(peakText) W")
+        lines.append("平均电压：\(voltageDetailText)")
+        lines.append("平均电流：\(currentDetailText)")
         lines.append("有效时长：\(activeDurationText)（总 \(totalDurationText)）")
         lines.append("电压区间：\(voltageText)，换档 \(stats.voltageChanges) 次")
         lines.append("采样：\(stats.sampleCount) 次")

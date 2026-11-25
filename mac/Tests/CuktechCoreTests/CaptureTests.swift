@@ -18,6 +18,9 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(acc.effectiveSeconds, 60.0, accuracy: 0.01)
         XCTAssertEqual(acc.voltageChanges, 0)
         XCTAssertEqual(acc.sampleCount, 61)
+        XCTAssertEqual(acc.averageVoltage, 20.0, accuracy: 0.001)
+        XCTAssertEqual(acc.averageCurrent, 3.0, accuracy: 0.001)
+        XCTAssertEqual(acc.peakCurrent, 3.0, accuracy: 0.001)
     }
 
     /// 5V×2A 充 10 秒后切到 20V×2A 再充 10 秒。
@@ -38,6 +41,11 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(acc.voltageChanges, 1)
         XCTAssertEqual(acc.minVoltage ?? 0, 5.0, accuracy: 0.001)
         XCTAssertEqual(acc.maxVoltage ?? 0, 20.0, accuracy: 0.001)
+        // 平均电压也按分段走：10 秒 5V + 跨档那 1 秒按 5V + 9 秒 20V → 235/20 = 11.75V。
+        // 如果误用「两点平均」或「简单算术平均」，这里会是 12.5 或 12.5 附近。
+        XCTAssertEqual(acc.averageVoltage, 11.75, accuracy: 0.01)
+        XCTAssertEqual(acc.averageCurrent, 2.0, accuracy: 0.001)
+        XCTAssertEqual(acc.peakCurrent, 2.0, accuracy: 0.001)
     }
 
     /// 空载的秒不参与积分，也不算有效时长。
@@ -62,6 +70,17 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(acc.effectiveSeconds, 0, accuracy: 0.0001)
     }
 
+    /// 拔线那一刻电压从 9V 掉到 0，这不是换档；空口的 5V 待机电也不该算进电压区间。
+    func testUnplugIsNotARailChange() {
+        var acc = CaptureAccumulator()
+        let t0 = Date()
+        for i in 0...10 { acc.add(sample(9.0, 2.0), at: t0.addingTimeInterval(Double(i))) }
+        for i in 11...40 { acc.add(sample(0, 0, state: 0x00), at: t0.addingTimeInterval(Double(i))) }
+        XCTAssertEqual(acc.voltageChanges, 0)
+        XCTAssertEqual(acc.minVoltage ?? 0, 9.0, accuracy: 0.001)
+        XCTAssertEqual(acc.maxVoltage ?? 0, 9.0, accuracy: 0.001)
+    }
+
     /// 0.1V 的读数抖动不该当成换档。
     func testSmallJitterIsSameRail() {
         var acc = CaptureAccumulator()
@@ -82,9 +101,13 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(r.portName, "C1")
         XCTAssertEqual(r.energyText, "0.36")
         XCTAssertEqual(r.averageText, "18.0")
+        XCTAssertEqual(r.averageVoltageText, "9.00")
+        XCTAssertEqual(r.averageCurrentText, "2.00")
         XCTAssertEqual(CaptureResult.duration(72), "1 分 12 秒")
         XCTAssertEqual(CaptureResult.duration(45), "45 秒")
         XCTAssertEqual(CaptureResult.duration(3720), "1 小时 02 分")
         XCTAssertTrue(r.summaryText.contains("充入电量：0.36 Wh"))
+        XCTAssertTrue(r.summaryText.contains("平均电压：9.00 V（最大 9.00 V）"))
+        XCTAssertTrue(r.summaryText.contains("平均电流：2.00 A（最大 2.00 A）"))
     }
 }

@@ -18,6 +18,10 @@ public actor DeviceSession {
     private var mible: MibleSession?
     private var running = false
     private var failures = 0
+    /// 上一次连上的外设 UUID（存在 config 里）。设备被残留在系统里、不再广播时靠它找回。
+    private var knownPeripheral: UUID?
+    /// 学到 UUID 时通知上层落盘。
+    public var onPeripheralIdentified: ((UUID) -> Void)?
     /// 命令通道一次只能跑一串命令：轮询和「开关/模式」如果交错，设备会把后面几条吞掉，
     /// 表现就是「已写入，但回读超时」或「四个端口都没有应答」。拿这个当锁串起来。
     private var channelBusy = false
@@ -25,9 +29,10 @@ public actor DeviceSession {
     public private(set) var capturePort: Int?
     private var captureTask: Task<Void, Never>?
 
-    public init(mac: [UInt8], token: [UInt8]) {
+    public init(mac: [UInt8], token: [UInt8], knownPeripheral: UUID? = nil) {
         self.mac = mac
         self.token = token
+        self.knownPeripheral = knownPeripheral
     }
 
     public var macText: String {
@@ -40,6 +45,7 @@ public actor DeviceSession {
     public func setPollInterval(_ v: TimeInterval) { pollInterval = max(0.5, v) }
     public func setLogHandler(_ handler: ((String) -> Void)?) { onLog = handler }
     public func setSnapshotHandler(_ handler: ((DeviceSnapshot) -> Void)?) { onSnapshot = handler }
+    public func setPeripheralHandler(_ handler: ((UUID) -> Void)?) { onPeripheralIdentified = handler }
 
     public func start() async {
         guard !running else { return }
@@ -86,27 +92,51 @@ public actor DeviceSession {
 
     public func stop() {
         running = false
-        link?.disconnect()
+        link?.shutdown()
         link = nil
         mible = nil
     }
 
-    /// 立刻重连：丢掉当前会话，让外层循环重新开始。
+    /// 立刻重连：断开当前连接，让外层循环重新开始。
+    /// 注意这里**保留** link（也就是保留同一个 CBCentralManager）——每次重连都新建一个
+    /// 会把蓝牙栈里的 central 越堆越多（日志里曾同时看到 3 个在报 state），
+    /// 那些没人管的 central 还会把设备攥在手里，害得后面永远扫不到广播。
     public func reconnectNow() {
-        link?.disconnect()
-        link = nil
+        link?.shutdown()
         mible = nil
     }
 
     // MARK: - 连接与轮询
 
+    /// 复用同一个连接对象；没有才新建。顺手把回调接上。
+    private func linkOrCreate() -> CBMibleLink {
+        if let l = link {
+            l.preferredIdentifier = knownPeripheral
+            return l
+        }
+        let l = CBMibleLink()
+        l.preferredIdentifier = knownPeripheral
+        l.onLog = { [weak self] s in Task { await self?.log(s) } }
+        l.onDisconnect = { [weak self] why in Task { await self?.log("[session] 断开：\(why)") } }
+        l.onPeripheralIdentified = { [weak self] id in
+            Task {
+                await self?.rememberPeripheral(id)
+            }
+        }
+        link = l
+        return l
+    }
+
+    private func rememberPeripheral(_ id: UUID) {
+        guard knownPeripheral != id else { return }
+        knownPeripheral = id
+        onPeripheralIdentified?(id)
+    }
+
     private func connectOnce() async throws {
         publish(status: "正在连接…", connected: false, error: nil)
 
-        let l = CBMibleLink()
-        l.onLog = { [weak self] s in Task { await self?.log(s) } }
-        l.onDisconnect = { [weak self] why in Task { await self?.log("[session] 断开：\(why)") } }
-        link = l
+        let l = linkOrCreate()
         mible = nil
 
         try await l.connect(mac: mac)

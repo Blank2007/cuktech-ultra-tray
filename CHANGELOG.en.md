@@ -4,6 +4,68 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.6 — 2026-11-25
+
+Capture results now report average/peak voltage and current, so they can be checked against a USB meter.
+
+**How**: voltage and current use the *same* piecewise integration as the energy total (two-point average
+on the same rail, pre-step value on the second a rail change happens), divided by the time actually
+delivering power. That keeps "average volts × average amps" consistent with average watts instead of
+producing three numbers that disagree, and the 30 idle seconds at the end don't dilute the averages.
+
+The result window shows a two-column average/max table for voltage and current; the copied summary
+gained two lines.
+
+Two related counting bugs fixed along the way:
+
+- **Unplugging counted as a rail change**: when capture ended, voltage dropped 9.1V → 0V, which blew
+  past the 0.5V threshold, so a session that never changed rails still reported "1 rail change".
+  Now it only counts when *both* samples are actually delivering power.
+- **Idle voltage leaked into the voltage range**: the 5V standby of an empty port and the 0V after
+  unplugging were counted in min/max voltage. Now only loaded samples count.
+
+**Measured against a meter** (C1 charging a phone, 44 min 53 s, 2689 samples): this app 13.01 Wh /
+17.6 W average / 21.8 W peak; a 维简 K2 meter on the same session logged 12.48 Wh / 16.9 W / 20.85 W,
+both at 1.93 A average current. About 4% apart.
+
+## macOS 0.1.5 — 2026-11-25
+
+Fixes "disconnect once and it can never reconnect". A connection-layer bug present since 0.1.0;
+nothing to do with the charger's firmware.
+
+**Symptom**: after the Mac sleeps and wakes (or the Bluetooth stack restarts on its own) the app
+drops the link and then reports "no device found" forever; pressing "reconnect" does not help.
+Meanwhile System Settings → Bluetooth shows the charger as **connected**.
+
+**Two overlapping causes**:
+
+- Every reconnect created a new `CBMibleLink` (and therefore a new `CBCentralManager`). The old one
+  only got `cancelPeripheralConnection`, never real cleanup. The log shows 2–3 centrals reporting
+  state at once (two `central state=` lines in the same second, 2405 times). Those orphaned centrals
+  keep holding the peripheral.
+- A BLE peripheral stops advertising once connected. With a stale connection holding it, the new
+  central can never see an advertisement, so it just retries. Quitting the app made the "connected"
+  entry vanish instantly and relaunching reconnected in under a second — which pins the cause.
+
+**Changes**:
+
+- One `CBCentralManager` for the whole process, reused across reconnects; shutdown/reconnect go
+  through the new `shutdown()` (stop scanning + cancel), so nothing piles up.
+- Before connecting, `dropStaleConnection()` tears down any half-finished link from the previous
+  attempt and waits for it to really disconnect, so the device starts advertising again.
+- Before scanning we check `retrieveConnectedPeripherals`: if the device is already attached at the
+  system level (stale link, wake from sleep), we **adopt that connection** instead of waiting for a
+  broadcast; checked once more as a fallback after a scan timeout.
+- The peripheral UUID is saved to `config.json` as `peripheralId` on first successful connect, so
+  adoption knows which device to take over (it will not grab one at random when several FE95 devices
+  are connected). The field is optional on purpose: synthesised decoding only uses `decodeIfPresent`
+  for optionals, and a `String = ""` default would make older configs fail to decode — and that
+  failure path falls back to defaults, wiping the stored mac/token.
+
+**Verified**: while the app holds the link and the system reports "connected", a second instance logs
+"device is already connected in the system, adopting it (not waiting for a broadcast)" and finds the
+services — exactly the state that used to be unreachable.
+
 ## macOS 0.1.4 — 2026-11-25
 
 Fixes one misleading bit of UI. No new features.

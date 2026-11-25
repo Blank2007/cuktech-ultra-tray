@@ -62,9 +62,40 @@ struct CaptureResultView: View {
 
             VStack(spacing: 5) {
                 row("有效时长", "\(result.activeDurationText)（总 \(result.totalDurationText)）")
-                row("峰值功率", "\(result.peakText) W")
-                row("电压区间", voltageLine)
+                if result.spansRails {
+                    row("电压区间", voltageLine)
+                }
+                if result.stats.voltageChanges > 0 {
+                    row("换档次数", "\(result.stats.voltageChanges) 次")
+                }
                 row("采样次数", "\(result.stats.sampleCount) 次")
+            }
+
+            Divider().opacity(0.25).padding(.vertical, 10)
+
+            // 平均与最大分左右两列：单看平均会被空载段稀释，单看最大看不出常态，
+            // 两个放一起才好和电流表（K2 之类）的读数对照。
+            VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("")
+                        .frame(width: 34, alignment: .leading)
+                    Text("平均")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("最大")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .font(.system(size: 9.5))
+                .foregroundColor(Theme.dim.opacity(0.85))
+
+                metricRow("电压",
+                          avg: "\(result.averageVoltageText) V",
+                          peak: "\(result.peakVoltageText) V")
+                metricRow("电流",
+                          avg: "\(result.averageCurrentText) A",
+                          peak: "\(result.peakCurrentText) A")
+                metricRow("功率",
+                          avg: "\(result.averageText) W",
+                          peak: "\(result.peakText) W")
             }
 
             Text("采集结果仅供参考 · 仅本次显示，不写入磁盘")
@@ -105,10 +136,27 @@ struct CaptureResultView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// 电压区间后面补一句换档次数——设备切换档位时是按段积分算的，这里直接告诉用户跳了几次。
+    /// 电压真的跨档时才显示区间，否则它和「平均/最大电压」是同一条信息。
     private var voltageLine: String {
         let n = result.stats.voltageChanges
         return n > 0 ? "\(result.voltageText) · 换档 \(n) 次" : result.voltageText
+    }
+
+    private func metricRow(_ name: String, avg: String, peak: String) -> some View {
+        HStack(spacing: 8) {
+            Text(name)
+                .font(.system(size: 10.5))
+                .foregroundColor(Theme.dim)
+                .frame(width: 34, alignment: .leading)
+            Text(avg)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Theme.fg)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            Text(peak)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Theme.fg)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
     }
 
     private func row(_ name: String, _ value: String) -> some View {

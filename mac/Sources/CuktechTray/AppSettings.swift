@@ -8,6 +8,12 @@ public struct AppSettings: Codable, Sendable {
     public var tokenHex: String = ""
     public var pollInterval: Double = 2.0
     public var showWattsInMenuBar: Bool = true
+    /// 上次连上的外设 UUID（CoreBluetooth 给的，跟机器绑定、对同一台设备稳定）。
+    /// 设备被残留在系统里、不再广播时，靠它从「系统已连接」列表里找回来。
+    /// 用可选类型是必须的：合成解码只对 optional 用 decodeIfPresent，
+    /// 写成 String = "" 会让老配置文件（没有这个键）解码失败，那条路径会退回默认值、
+    /// 把已经存好的 mac/token 冲掉。
+    public var peripheralId: String?
 
     public init() {}
 
