@@ -20,6 +20,9 @@ public enum BuildInfo {
     ///        菜单栏那一格改为固定宽度 58pt + 内容指纹去抖，读数跳动时不再带着右边图标一起挪；
     ///        面板背景加玻璃质感（macOS 26 用 NSGlassEffectView，13~15 降级成毛玻璃），
     ///        两者都能在托盘菜单里关掉。
-    public static let version = "0.1.6"
+    /// 0.1.7：修 issue #6（@editwe）——0.1.6 在 macOS 26/27 上把面板冲成中灰、次要文字看不清。
+    ///        玻璃底统一退回 NSVisualEffectView(.popover / behindWindow)，底色不再压到 0.55（改成 0.9），
+    ///        且「面板玻璃质感」改成默认**关**（老配置里写了 true 的继续生效）。
+    public static let version = "0.1.7"
     public static let channel = "mac"
 }

@@ -4,6 +4,53 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.3 — 2026-11-26
+
+This one fixes a **click misalignment** in the device settings window, and pulls out the root cause of that whole class of bug.
+
+- **Symptom** (reported by a user): clicking the "Idle screen off" switch actually toggled the "Orientation lock" row below it,
+  and clicking the "Orientation lock" row did nothing at all
+- **Root cause**: `src/CuktechTrayAot/DeviceSettingsWindow.cs` **wrote the same coordinate formula twice** — once for drawing
+  (`Paint`, `Rows1Y + RowH` for idle screen off, `Rows1Y + 2 * RowH` for orientation lock, both correct) and once for hit testing
+  (`BuildHots`, which started counting from the first row and was therefore one row short: the first row `Rows1Y` is
+  "Screen timeout", which only has chips and no switch). The whole hit table sat **32 dip above** what was drawn
+- **Fix**: `BuildHots` now uses `Rows1Y + RowH` / `Rows1Y + 2 * RowH` for those two switches, row for row with the drawing
+- **Root cause removed**: six new rectangle helpers — `ScreenChipRect`, `SwitchRect`, `LangChipRect`,
+  `CountdownChipRect`, `ProtocolChipRect`, `ButtonRect` — are now the **single** source for both drawing and hit testing,
+  scaled through `R()` (design dip -> device pixels). This was the only window in the whole tree that had two copies
+- **`DrawSwitchRow` takes an explicit `Kind`**: it used to infer the kind from `rowY`
+  (`rowY == Rows1Y + RowH ? Idle : ... : Usb`), so inserting a row between them would silently fall through to `Kind.UsbSwitch`
+  and reproduce the same "click A, trigger B" bug
+- **New self-check `--probe-hits`**: dumps all 25 hit rectangles at scale 1 (`DeviceSettingsWindow.WriteHitProbe`), to be used
+  together with `--render-settings`. After the refactor both were compared before/after: hit rects identical line by line,
+  rendered PNG byte-for-byte identical (same SHA256)
+- Eight other self-drawn windows were audited the same way (panel, control page, mode page, per-port capture, about,
+  privacy notice, pairing wizard, context menu); all of them share the same rectangle methods (`MenuWindow` even draws and
+  hit-tests from the same `_rows` table), so no second misalignment exists
+- Version 0.5.2 -> **0.5.3**
+
+## macOS 0.1.7 — 2026-11-26
+
+Fixes [issue #6](https://github.com/Blank2007/cuktech-ultra-tray/issues/6):
+[@editwe](https://github.com/editwe) reported that with the glass panel on, 0.1.6 on macOS 26/27 washed the dark panel out to
+a mid grey so the `.secondary` text was nearly unreadable, and that window-snap screenshots could not frame the panel.
+
+- **Root cause** (his analysis, and the code confirms it): 0.1.6 used `NSGlassEffectView` behind `#available(macOS 26.0, *)`,
+  but inside an `NSPopover`'s ordinary container that view **cannot sample the window behind it** and degenerates into a neutral
+  translucent layer; at the same time `backdropOpacity` dropped the SwiftUI solid backdrop to **0.55** on 26+, so a light window
+  behind turned the panel mid grey and the dim text disappeared
+- **The glass layer is a plain `NSVisualEffectView` again** (`.popover` material, `.behindWindow` blending): that is what 13-15
+  always used, and 26/27 sample correctly through it as well. No more system-version branching
+  (`GlassSupport.swift` was rewritten, `hasLiquidGlass` is gone)
+- **Backdrop stays readable**: `backdropOpacity` returns **0.9** when glass is on (was 0.55 on 26+), so secondary text keeps its contrast
+- **Glass is off by default now** (`AppSettings.glassPanel` defaults to `false`, and a missing key decodes to `false`):
+  0.1.6 turned it on for everyone, which is why fresh and upgraded installs both hit this. An explicit `true` in an existing
+  config still wins, and the tray menu toggles it
+- **About the screenshot issue**: not reproducible on our side (the CI macOS runners have no Bluetooth hardware, so they can only
+  verify compilation and that the UI comes up). Going by the `CGWindowListCopyWindowInfo` check from #6, the process has only the
+  popover window, and dropping `NSGlassEffectView` removes the extra glass layer — please try window-snap capture again
+- Version 0.1.6 -> **0.1.7**
+
 ## 0.5.2 — 2026-11-25
 
 This one fixes a hole I dug myself: **a panel position remembered off-screen was restored as-is, so the panel

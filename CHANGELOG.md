@@ -3,6 +3,46 @@
 这个项目最早只在我自己的一台电脑上跑，后来放到了 GitHub 上，所以下面是按「做过什么」整理的，
 版本号一路加到这里，方便对上安装包里的文件版本。
 
+## 0.5.3 — 2026-11-26
+
+这一版修的是「设备设置」窗口里一处**点击错位**，顺手把这类错位的根子拔掉。
+
+- **现象**（用户反馈）：指针点「空闲息屏」的开关，实际改的是下面那行「方向锁」；点「方向锁」那一行则什么也不发生
+- **根因**：`src/CuktechTrayAot/DeviceSettingsWindow.cs` 里**绘制和命中各写了一份坐标公式**。绘制那边
+  （`Paint` 里 `Rows1Y + RowH` 画「空闲息屏」、`Rows1Y + 2 * RowH` 画「方向锁」）是对的，
+  命中那边（`BuildHots`）从第一行算起、少算了一行——因为第一行 `Rows1Y` 是「息屏时间」，右边只有胶囊没有开关。
+  于是整份命中表比画面**上移了 32 dip**：点第二行打到第三行，点第三行落空
+- **修法**：`BuildHots` 里空闲息屏 / 方向锁改成 `Rows1Y + RowH` / `Rows1Y + 2 * RowH`，与绘制逐行对齐
+- **顺手拔根**：新增 `ScreenChipRect` / `SwitchRect` / `LangChipRect` / `CountdownChipRect` /
+  `ProtocolChipRect` / `ButtonRect` 六个矩形函数，**绘制和命中都只调它们**，落屏统一过 `R()`（设计坐标 → 设备像素）。
+  这个窗口原是全仓唯一「公式写两遍」的地方，现在也只剩一个来源
+- **`DrawSwitchRow` 改成显式传 `Kind`**：以前是按 `rowY` 反推（`rowY == Rows1Y + RowH ? Idle : … : Usb`），
+  将来在这几行中间插一行，新行会静默落到 `Kind.UsbSwitch`，又变成「点 A 触发 B」
+- **新增排版自检 `--probe-hits`**：按缩放 1 把 25 个命中矩形导成文本（`DeviceSettingsWindow.WriteHitProbe`），
+  配合 `--render-settings` 出图。改完这两份都做了前后对比：命中矩形逐行一致、渲染图 SHA256 完全相同
+- 同类检查也顺带做了一遍：面板、控制页、模式页、单口采集、关于、隐私说明、配对向导、右键菜单这八个自绘窗口，
+  绘制与命中都共享同一个矩形方法（`MenuWindow` 更是绘制和命中都读同一份 `_rows`），没有第二处错位
+- 版本 0.5.2 → **0.5.3**
+
+## macOS 0.1.7 — 2026-11-26
+
+修 [issue #6](https://github.com/Blank2007/cuktech-ultra-tray/issues/6)：
+[@editwe](https://github.com/editwe) 报「0.1.6 在 macOS 26/27 上，开玻璃面板会把深色面冲成中灰、
+`.secondary` 的次要文字几乎看不清；另外按窗口截图框不住面板」。
+
+- **根因**（他自己的定位，我核对了代码是对的）：0.1.6 在 `#available(macOS 26.0, *)` 上用 `NSGlassEffectView`，
+  这个视图塞进 `NSPopover` 的普通容器里**拿不到窗口背景采样**，只剩一层中性半透明玻璃；
+  同时 `backdropOpacity` 在 26+ 上把 SwiftUI 实色底压到 **0.55**，背后浅色窗口一透就变成中灰，灰字直接糊掉
+- **玻璃底统一退回 `NSVisualEffectView`**（`.popover` 材质 + `.behindWindow` 采样）：13~15 一直是这条路，
+  26/27 上也一样能正确采样；不再按系统版本分叉（`GlassSupport.swift` 整文件重写，`hasLiquidGlass` 删掉）
+- **底色不再压那么狠**：玻璃开时 `backdropOpacity` 固定 **0.9**（26+ 原来是 0.55），次要文字留得住对比度
+- **「面板玻璃质感」默认关**（`AppSettings.glassPanel` 默认值 `false`，解码缺键时也按 `false`）：
+  0.1.6 是默认开，于是新装和升级的用户一上来就撞上这个效果。老配置里写了 `true` 的继续生效，托盘菜单里可以随时开关
+- **截图那条**：我们这边没办法复现（CI 的 macOS runner 没有蓝牙硬件，只能验证编译与界面启动）。
+  按 #6 里他给的 `CGWindowListCopyWindowInfo` 核对方法，进程只有 popover 那一个窗口；去掉 `NSGlassEffectView`
+  之后也不再有额外的玻璃层，请再试一次窗口吸附截图
+- 版本 0.1.6 → **0.1.7**
+
 ## 0.5.2 — 2026-11-25
 
 这一版修的是我自己弄出来的一个坑：**面板「记住的位置」落在屏幕外，启动时又原样搬回去，于是面板再也看不见了**。

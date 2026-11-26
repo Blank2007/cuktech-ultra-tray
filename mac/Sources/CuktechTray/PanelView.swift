@@ -14,9 +14,11 @@ final class PanelModel: ObservableObject {
     /// 面板「始终在最前」：把 popover 的窗口层级提到 .floating，压在其他 App 窗口之上。
     /// 跟 pinned 不是一回事 —— pinned 只管「点外面收不收」，这个才管「谁在上面」。
     @Published var alwaysOnTop = false
-    /// 面板背景用不用玻璃质感。跟 AppSettings.glassPanel 同步，
+    /// 面板背景用不用毛玻璃质感。跟 AppSettings.glassPanel 同步，
     /// 只影响底色（玻璃底下要留缝），布局和配色常量一概不动。
-    @Published var glassEnabled = true
+    /// 0.1.7 起默认关：真值由 TrayController 从 config.json 灌进来，这里先按「关」建窗口，
+    /// 免得建窗口那一瞬间先闪一下玻璃底。
+    @Published var glassEnabled = false
     /// 蓝牙读数间隔（秒）。config.json 里的 pollInterval，改完立刻生效并落盘。
     @Published var pollInterval: Double = 2.0
     /// 正在采集的端口（1..4），nil = 没在采集。

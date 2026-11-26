@@ -22,9 +22,10 @@ public struct AppSettings: Codable, Sendable {
     /// 默认开：读数每秒在变，宽度跟着变会把右边其它菜单栏图标推来推去。
     /// 老配置没有这个键，按 true 算（这才是「修好抖动」的默认行为）。
     public var fixedMenuBarWidth: Bool = true
-    /// 面板背景是否用玻璃质感：macOS 26 起是真 Liquid Glass，13~15 上退化成毛玻璃。
-    /// 老配置没有这个键，按 true 算；关掉就回到原来的实色面板。
-    public var glassPanel: Bool = true
+    /// 面板背景是否用毛玻璃质感（`NSVisualEffectView`，13 以上都走这条路）。
+    /// 老配置没有这个键，按 **false** 算 —— 0.1.6 默认开，结果 26/27 上把面板冲成中灰、次要文字看不清
+    /// （issue #6），0.1.7 起改成默认关、要的话在托盘菜单里自己勾。
+    public var glassPanel: Bool = false
 
     public init() {}
 
@@ -46,7 +47,7 @@ public struct AppSettings: Codable, Sendable {
         peripheralId = try c.decodeIfPresent(String.self, forKey: .peripheralId)
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
         fixedMenuBarWidth = try c.decodeIfPresent(Bool.self, forKey: .fixedMenuBarWidth) ?? true
-        glassPanel = try c.decodeIfPresent(Bool.self, forKey: .glassPanel) ?? true
+        glassPanel = try c.decodeIfPresent(Bool.self, forKey: .glassPanel) ?? false
     }
 
     public static var directory: URL {

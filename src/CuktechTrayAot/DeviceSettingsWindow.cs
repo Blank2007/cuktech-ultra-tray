@@ -36,6 +36,14 @@ internal sealed class DeviceSettingsWindow : WinBase
     private const int ChipGap = 6;
     private const int SwitchW = 40;
     private const int SwitchH = 22;
+    // 各种胶囊宽度（0.5.3 提取成常量：绘制和命中现在共用同一批矩形函数）
+    private const int ScreenChipW = 50;
+    private const int CountdownChipX = 84;
+    private const int CountdownChipW = 80;
+    private const int ProtocolChipW = 54;
+    private const int LangCnW = 56;
+    private const int LangEnW = 74;
+    private const int BtnGap = 8;
     private const int BtnW = 88;
 
     // ---- 配色（跟主面板同一套）----
@@ -326,72 +334,52 @@ internal sealed class DeviceSettingsWindow : WinBase
 
         // 息屏时间：5 个胶囊右对齐
         var timeouts = ScreenTimeouts.Values;
-        int totalW = timeouts.Length * 50 + (timeouts.Length - 1) * ChipGap;
-        int x0 = DesignW - PadX - totalW;
-        int y = Rows1Y + (RowH - ChipH) / 2;
         bool screenKnown = _state.ScreenTimeout is not null;
         for (int i = 0; i < timeouts.Length; i++)
         {
             if (!ready || !screenKnown) continue;
-            list.Add(new Hot(Kind.ScreenChip, i, 0,
-                new Rectangle(S(x0 + i * (50 + ChipGap)), S(y), S(50), S(ChipH))));
+            list.Add(new Hot(Kind.ScreenChip, i, 0, R(ScreenChipRect(i))));
         }
 
-        // 空闲息屏 / 方向锁 的开关
-        int swx = DesignW - PadX - SwitchW;
-        int swy = Rows1Y + (RowH - SwitchH) / 2;
+        // 空闲息屏 / 方向锁：行首 y 跟 Paint 里那两行一模一样，矩形来自同一个 SwitchRect
         if (ready && _state.IdleScreenOff is not null)
-            list.Add(new Hot(Kind.IdleSwitch, 0, 0, new Rectangle(S(swx), S(swy), S(SwitchW), S(SwitchH))));
+            list.Add(new Hot(Kind.IdleSwitch, 0, 0, R(SwitchRect(Rows1Y + RowH))));
         if (ready && _state.ScreenLock is not null)
-            list.Add(new Hot(Kind.LockSwitch, 0, 0,
-                new Rectangle(S(swx), S(Rows1Y + RowH + (RowH - SwitchH) / 2), S(SwitchW), S(SwitchH))));
+            list.Add(new Hot(Kind.LockSwitch, 0, 0, R(SwitchRect(Rows1Y + 2 * RowH))));
 
         // 语言：中文 / English
-        const int cnW = 56, enW = 74;
-        int langX = DesignW - PadX - (cnW + ChipGap + enW);
-        int langY = Rows1Y + 3 * RowH + (RowH - ChipH) / 2;
         if (ready && _state.Language is not null)
         {
-            list.Add(new Hot(Kind.LangChip, 1, 0, new Rectangle(S(langX), S(langY), S(cnW), S(ChipH))));
-            list.Add(new Hot(Kind.LangChip, 0, 0, new Rectangle(S(langX + cnW + ChipGap), S(langY), S(enW), S(ChipH))));
+            list.Add(new Hot(Kind.LangChip, 1, 0, R(LangChipRect(chinese: true))));
+            list.Add(new Hot(Kind.LangChip, 0, 0, R(LangChipRect(chinese: false))));
         }
 
         // 四口定时断电：一个循环档位的胶囊
         for (int i = 0; i < 4; i++)
         {
             if (!ready || _state.Countdowns[i] is null) continue;
-            list.Add(new Hot(Kind.Countdown, i, 0,
-                new Rectangle(S(84), S(Rows2Y + i * RowH + (RowH - ChipH) / 2), S(80), S(ChipH))));
+            list.Add(new Hot(Kind.Countdown, i, 0, R(CountdownChipRect(i))));
         }
 
         // USB-A 小电流
         if (ready && _state.UsbLowCurrent is not null)
-            list.Add(new Hot(Kind.UsbSwitch, 0, 0,
-                new Rectangle(S(swx), S(Rows2Y + 4 * RowH + (RowH - SwitchH) / 2), S(SwitchW), S(SwitchH))));
+            list.Add(new Hot(Kind.UsbSwitch, 0, 0, R(SwitchRect(Rows2Y + 4 * RowH))));
 
         // 快充协议：每口 2~3 个胶囊，右对齐
         for (int port = 0; port < 4; port++)
         {
             var caps = ProtocolCaps.Available(port);
             if (!ready || caps.Length == 0 || _state.ProtocolFlags is null) continue;
-            int cw = 54;
-            int total = caps.Length * cw + (caps.Length - 1) * ChipGap;
-            int cx = DesignW - PadX - total;
-            int cy = Rows3Y + port * RowH + (RowH - ChipH) / 2;
             for (int j = 0; j < caps.Length; j++)
             {
                 if (_state.ProtocolOn(port, caps[j]) is null) continue;
-                list.Add(new Hot(Kind.ProtocolChip, port, j,
-                    new Rectangle(S(cx + j * (cw + ChipGap)), S(cy), S(cw), S(ChipH))));
+                list.Add(new Hot(Kind.ProtocolChip, port, j, R(ProtocolChipRect(port, j))));
             }
         }
 
         // 底部按钮
-        int btnGap = 8;
-        int closeX = DesignW - PadX - BtnW;
-        int refreshX = closeX - btnGap - BtnW;
-        if (_read is null) list.Add(new Hot(Kind.Refresh, 0, 0, new Rectangle(S(refreshX), S(BtnY), S(BtnW), S(BtnH))));
-        list.Add(new Hot(Kind.Close, 0, 0, new Rectangle(S(closeX), S(BtnY), S(BtnW), S(BtnH))));
+        if (_read is null) list.Add(new Hot(Kind.Refresh, 0, 0, R(ButtonRect(refresh: true))));
+        list.Add(new Hot(Kind.Close, 0, 0, R(ButtonRect(refresh: false))));
 
         return list;
     }
@@ -404,6 +392,18 @@ internal sealed class DeviceSettingsWindow : WinBase
     }
 
     private bool Same(Hot a, Hot b) => a.Kind == b.Kind && a.A == b.A && a.B == b.B;
+
+    /// <summary>排版自查（0.5.3）：把全部命中矩形按设计尺寸（缩放 = 1）导出成文本，
+    /// 好跟 Paint 里每行实际画的 y 逐行核对。之前「点空闲息屏却触发方向锁」就是这里少算了一行，
+    /// 留下这个探针，以后再动行距就能一眼看出来对不上。</summary>
+    internal void WriteHitProbe(string path)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("kind A B x y w h");
+        foreach (var h in BuildHots())
+            sb.AppendLine($"{h.Kind} {h.A} {h.B} {h.Rect.X} {h.Rect.Y} {h.Rect.Width} {h.Rect.Height}");
+        System.IO.File.WriteAllText(path, sb.ToString());
+    }
 
     protected override bool WantsHandCursor(int x, int y)
         => Hit(BuildHots(), x, y).Kind != Kind.None;
@@ -534,9 +534,9 @@ internal sealed class DeviceSettingsWindow : WinBase
         DrawScreenChips(g);
 
         Text(g, "空闲息屏", _fLabel, Fg, S(PadX), S(Rows1Y + RowH), S(76), S(RowH));
-        DrawSwitchRow(g, Rows1Y + RowH, _state.IdleScreenOff);
+        DrawSwitchRow(g, Kind.IdleSwitch, Rows1Y + RowH, _state.IdleScreenOff);
         Text(g, "方向锁", _fLabel, Fg, S(PadX), S(Rows1Y + 2 * RowH), S(76), S(RowH));
-        DrawSwitchRow(g, Rows1Y + 2 * RowH, _state.ScreenLock);
+        DrawSwitchRow(g, Kind.LockSwitch, Rows1Y + 2 * RowH, _state.ScreenLock);
         Text(g, "语言", _fLabel, Fg, S(PadX), S(Rows1Y + 3 * RowH), S(76), S(RowH));
         DrawLangChips(g);
 
@@ -548,7 +548,7 @@ internal sealed class DeviceSettingsWindow : WinBase
             Text(g, Snapshot.PortNames[i], _fLabel, Fg, S(PadX), S(y), S(52), S(RowH));
             bool known = _state.Countdowns[i] is not null;
             string label = _state.Countdowns[i] is int v ? CountdownOptions.Label(v) : "—";
-            var r = new Rectangle(S(84), S(y + (RowH - ChipH) / 2), S(80), S(ChipH));
+            var r = R(CountdownChipRect(i));
             DrawChip(g, r, label, on: known && _state.Countdowns[i] != 0,
                 disabled: !CanWrite || !known, hot: Same(_hover, HotAt(Kind.Countdown, i)));
             // 右边顺手把这一口此刻实际协商到的协议写出来：定时断电设了多久，跟它现在跑什么协议是一起看的
@@ -561,7 +561,7 @@ internal sealed class DeviceSettingsWindow : WinBase
             Text(g, "USB-A 小电流", _fLabel, Fg, S(PadX), S(y), S(160), S(RowH));
             Text(g, "给耳机手环充电时不握手快充", _fNote, Faint,
                 S(PadX + 160), S(y), S(swX() - PadX - 168 - PadX + 24), S(RowH), TextAnchor.Right);
-            DrawSwitchRow(g, y, _state.UsbLowCurrent);
+            DrawSwitchRow(g, Kind.UsbSwitch, y, _state.UsbLowCurrent);
         }
 
         // 三、快充协议
@@ -570,21 +570,73 @@ internal sealed class DeviceSettingsWindow : WinBase
         {
             int y = Rows3Y + i * RowH;
             Text(g, Snapshot.PortNames[i], _fLabel, Fg, S(PadX), S(y), S(52), S(RowH));
-            DrawProtocolChips(g, i, y);
+            DrawProtocolChips(g, i);
         }
 
         // 状态行 + 按钮
         Text(g, _status, _fNote, _statusColor, S(PadX), S(StatusY), S(DesignW - PadX * 2), S(18));
 
-        int closeX = DesignW - PadX - BtnW;
-        int refreshX = closeX - 8 - BtnW;
-        DrawButton(g, new Rectangle(S(refreshX), S(BtnY), S(BtnW), S(BtnH)), "刷新",
+        DrawButton(g, R(ButtonRect(refresh: true)), "刷新",
             primary: true, hot: Same(_hover, HotAt(Kind.Refresh, 0)), enabled: _read is null);
-        DrawButton(g, new Rectangle(S(closeX), S(BtnY), S(BtnW), S(BtnH)), "关闭",
+        DrawButton(g, R(ButtonRect(refresh: false)), "关闭",
             primary: false, hot: Same(_hover, HotAt(Kind.Close, 0)), enabled: true);
     }
 
     private int swX() => DesignW - PadX - SwitchW;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 布局矩形：唯一的来源
+    //
+    // 0.5.2 及之前，Paint 里画一遍、BuildHots 里另写一遍同样的公式，结果「空闲息屏」
+    // 的命中框少算了一行，点它触发的是下面那行「方向锁」（issue #2 那类反馈）。
+    // 现在两边都只调下面这几个方法：绘制错，命中一起错；绘制对，命中一定对。
+    // 参数一律是设计坐标（dip），落屏时统一过 R()。
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>设计坐标 → 设备像素。绘制与命中都只走这一个换算。</summary>
+    private Rectangle R(Rectangle d) => new(S(d.X), S(d.Y), S(d.Width), S(d.Height));
+
+    private static Rectangle ScreenChipRect(int i)
+    {
+        var timeouts = ScreenTimeouts.Values;
+        int totalW = timeouts.Length * ScreenChipW + (timeouts.Length - 1) * ChipGap;
+        int x0 = DesignW - PadX - totalW;
+        return new Rectangle(x0 + i * (ScreenChipW + ChipGap), Rows1Y + (RowH - ChipH) / 2,
+            ScreenChipW, ChipH);
+    }
+
+    /// <summary>某个开关所在行（设计 y = 该行行首）上的开关矩形。</summary>
+    private static Rectangle SwitchRect(int rowY)
+        => new(DesignW - PadX - SwitchW, rowY + (RowH - SwitchH) / 2, SwitchW, SwitchH);
+
+    private static Rectangle LangChipRect(bool chinese)
+    {
+        int x = DesignW - PadX - (LangCnW + ChipGap + LangEnW);
+        int y = Rows1Y + 3 * RowH + (RowH - ChipH) / 2;
+        return chinese
+            ? new Rectangle(x, y, LangCnW, ChipH)
+            : new Rectangle(x + LangCnW + ChipGap, y, LangEnW, ChipH);
+    }
+
+    private static Rectangle CountdownChipRect(int i)
+        => new(CountdownChipX, Rows2Y + i * RowH + (RowH - ChipH) / 2, CountdownChipW, ChipH);
+
+    private static Rectangle ProtocolChipRect(int port, int j)
+    {
+        var caps = ProtocolCaps.Available(port);
+        if (caps.Length == 0) return Rectangle.Empty;
+        int total = caps.Length * ProtocolChipW + (caps.Length - 1) * ChipGap;
+        int cx = DesignW - PadX - total;
+        int cy = Rows3Y + port * RowH + (RowH - ChipH) / 2;
+        return new Rectangle(cx + j * (ProtocolChipW + ChipGap), cy, ProtocolChipW, ChipH);
+    }
+
+    private static Rectangle ButtonRect(bool refresh)
+    {
+        int closeX = DesignW - PadX - BtnW;
+        int refreshX = closeX - BtnGap - BtnW;
+        return new Rectangle(refresh ? refreshX : closeX, BtnY, BtnW, BtnH);
+    }
 
     /// <summary>取当前 hot 列表里某个按钮的矩形（只是为了让 hover 判断写得短一点）。</summary>
     private Hot HotAt(Kind kind, int a, int b = 0)
@@ -607,12 +659,9 @@ internal sealed class DeviceSettingsWindow : WinBase
     private void DrawScreenChips(Graphics g)
     {
         var timeouts = ScreenTimeouts.Values;
-        int totalW = timeouts.Length * 50 + (timeouts.Length - 1) * ChipGap;
-        int x0 = DesignW - PadX - totalW;
-        int y = Rows1Y + (RowH - ChipH) / 2;
         for (int i = 0; i < timeouts.Length; i++)
         {
-            var r = new Rectangle(S(x0 + i * (50 + ChipGap)), S(y), S(50), S(ChipH));
+            var r = R(ScreenChipRect(i));
             DrawChip(g, r, ScreenTimeouts.Label(timeouts[i]),
                 on: _state.ScreenTimeout == timeouts[i],
                 disabled: !CanWrite || _state.ScreenTimeout is null,
@@ -622,11 +671,8 @@ internal sealed class DeviceSettingsWindow : WinBase
 
     private void DrawLangChips(Graphics g)
     {
-        const int cnW = 56, enW = 74;
-        int x = DesignW - PadX - (cnW + ChipGap + enW);
-        int y = Rows1Y + 3 * RowH + (RowH - ChipH) / 2;
-        var rc = new Rectangle(S(x), S(y), S(cnW), S(ChipH));
-        var re = new Rectangle(S(x + cnW + ChipGap), S(y), S(enW), S(ChipH));
+        var rc = R(LangChipRect(chinese: true));
+        var re = R(LangChipRect(chinese: false));
         bool known = _state.Language is not null;
         DrawChip(g, rc, "中文", on: _state.Language == 1, disabled: !CanWrite || !known,
             hot: Same(_hover, HotAt(Kind.LangChip, 1)));
@@ -634,27 +680,19 @@ internal sealed class DeviceSettingsWindow : WinBase
             hot: Same(_hover, HotAt(Kind.LangChip, 0)));
     }
 
-    private void DrawSwitchRow(Graphics g, int rowY, bool? on)
-    {
-        var r = new Rectangle(S(swX()), S(rowY + (RowH - SwitchH) / 2), S(SwitchW), S(SwitchH));
-        Kind kind = rowY == Rows1Y + RowH ? Kind.IdleSwitch
-                  : rowY == Rows1Y + 2 * RowH ? Kind.LockSwitch
-                  : Kind.UsbSwitch;
-        DrawSwitch(g, r, on, hot: Same(_hover, HotAt(kind, 0)));
-    }
+    /// <summary>画一行右边那个开关。<paramref name="kind"/> 由调用方显式给出 —— 0.5.3 之前是按
+    /// rowY 反推的（跟空闲息屏/方向锁的行号写死在一起），将来在这几行中间插一行就会静默错位。</summary>
+    private void DrawSwitchRow(Graphics g, Kind kind, int rowY, bool? on)
+        => DrawSwitch(g, R(SwitchRect(rowY)), on, hot: Same(_hover, HotAt(kind, 0)));
 
-    private void DrawProtocolChips(Graphics g, int port, int rowY)
+    private void DrawProtocolChips(Graphics g, int port)
     {
         var caps = ProtocolCaps.Available(port);
         if (caps.Length == 0) return;
-        const int cw = 54;
-        int total = caps.Length * cw + (caps.Length - 1) * ChipGap;
-        int cx = DesignW - PadX - total;
-        int cy = rowY + (RowH - ChipH) / 2;
         for (int j = 0; j < caps.Length; j++)
         {
             bool? on = _state.ProtocolOn(port, caps[j]);
-            var r = new Rectangle(S(cx + j * (cw + ChipGap)), S(cy), S(cw), S(ChipH));
+            var r = R(ProtocolChipRect(port, j));
             DrawChip(g, r, caps[j].Label(), on: on == true,
                 disabled: !CanWrite || on is null,
                 hot: Same(_hover, HotAt(Kind.ProtocolChip, port, j)));

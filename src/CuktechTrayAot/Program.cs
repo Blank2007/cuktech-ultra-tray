@@ -264,6 +264,19 @@ internal static class Program
             return 0;
         }
 
+        // 设备设置窗口命中矩形自查（0.5.3）：缩放固定 1，导出每个热区的 x/y/w/h
+        if (Has(args, "--probe-hits"))
+        {
+            var hclient = new DeviceClient(settings, null);
+            using var hwin = new DeviceSettingsWindow(hclient);
+            if (!hwin.IsValid) return 3;
+            hwin.ForceScale(1f);
+            hwin.UseDemoData();
+            hwin.WriteHitProbe(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-hits.txt");
+            LogSink.Write("[probe] hit rects written");
+            return 0;
+        }
+
         // 单口采集窗口排版自查（0.5.0）：完成态用真 CaptureAccumulator 喂 250 个假采样点
         if (Has(args, "--render-capture"))
         {

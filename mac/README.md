@@ -284,6 +284,21 @@ mac/
 
 ---
 
+## 0.1.7 里的变化（修玻璃面板）
+
+[issue #6](https://github.com/Blank2007/cuktech-ultra-tray/issues/6)（[@editwe](https://github.com/editwe) 报）：
+0.1.6 在 macOS 26/27 上开玻璃面板，整个面板被冲成中灰、副标题和「空载 / 0.0W」这类次要文字几乎看不清；
+另外按窗口截图框不住面板。
+
+- **原因**：0.1.6 在 `#available(macOS 26.0, *)` 上换成 `NSGlassEffectView`，这个视图塞进 `NSPopover` 的普通容器里
+  **拿不到窗口背景采样**，只剩一层中性半透明玻璃；同时把 SwiftUI 的实色底压到了 **0.55**，背后只要有一扇浅色窗口，
+  深色底就被冲成中灰
+- **现在的做法**：玻璃底统一用 `NSVisualEffectView`（`.popover` + `.behindWindow`），不再按系统版本分叉；
+  底色固定 **0.9**，次要文字留得住对比度（改的是 `Sources/CuktechTray/GlassSupport.swift`，整文件重写）
+- **默认关**：`config.json` 里没有 `glassPanel` 这个键时按 `false` 处理，要玻璃就去托盘菜单勾「面板玻璃质感」。
+  以前勾过的配置里写着 `true`，继续生效
+- 面板尺寸、层级、圆角都没动（还是 340×424 的 popover）
+
 ## 0.1.6 里的变化（社区 PR #5 的后半 + 自己补的）
 
 [@editwe](https://github.com/editwe) 的 [PR #5](https://github.com/Blank2007/cuktech-ultra-tray/pull/5)
@@ -300,8 +315,8 @@ mac/
   与 `testUnplugIsNotARailChange` 两条测试；`--capture-demo` 可以直接看样例结果
 - **面板「始终在最前」**：托盘菜单里勾上就 `NSWindow.level = .floating`，跟「固定面板」互相独立
 - **菜单栏不再抖**：那一格固定 58 pt，并且只有读数 / 颜色真的变了才重绘（内容指纹去抖）；托盘菜单可以关掉
-- **面板玻璃质感**：macOS 26 用 `NSGlassEffectView`，13~15 退回 `NSVisualEffectView`；只动面板背景，
-  其它窗口不变，托盘菜单可关（默认开）
+- **面板玻璃质感**：面板背景垫一层 `NSVisualEffectView`（`.popover` 材质 + `behindWindow` 采样，13 以上都这一条路）；
+  只动面板背景，其它窗口不变，托盘菜单可开（**默认关** —— 0.1.7 改的，见下面那一节）
 - **参考了衍生项目的思路**：固定宽度菜单栏、睡醒重连、玻璃质感这三处来自
   [@a1287448852](https://github.com/a1287448852) 的 [CuktechMac10Ultra](https://github.com/a1287448852/CuktechMac10Ultra)
   （它本身是本项目 macOS 协议实现的衍生版，MIT）。**实现是自己重写的，没有复制源码**，引用写在 [NOTICE](../NOTICE) 与根 README 里

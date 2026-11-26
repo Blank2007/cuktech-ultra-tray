@@ -331,7 +331,8 @@ final class TrayController: NSObject {
         log.write("[tray] 菜单栏固定宽度 -> \(settings.fixedMenuBarWidth)")
     }
 
-    /// 「面板玻璃质感」：勾上给面板背景垫玻璃（26+ Liquid Glass，13~15 毛玻璃）。
+    /// 「面板玻璃质感」：勾上给面板背景垫一层毛玻璃（`NSVisualEffectView`，13 以上都这一条路；
+    /// 0.1.7 起默认关，见 issue #6）。
     @objc private func toggleGlassPanel() {
         settings.glassPanel.toggle()
         glassItem.state = settings.glassPanel ? .on : .off
