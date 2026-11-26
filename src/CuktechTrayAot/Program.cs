@@ -26,6 +26,39 @@ internal static class Program
     private static bool Has(string[] args, string flag) =>
         args.Any(a => a.Equals(flag, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>自查图的落地目录。<c>--out=&lt;目录&gt;</c> 优先（CI 和 tools/check-ui.ps1 用它往临时目录里写）；
+    /// 否则从 exe 往上找仓库根（有 CHANGELOG.md 的那层）再进 docs —— exe 在 bin\Release\... 下也能找到。
+    /// 都找不到才退到 %LOCALAPPDATA%\CuktechTray\probe，免得往只读目录里写。</summary>
+    private static string OutDir(string[] args)
+    {
+        foreach (var a in args)
+        {
+            if (!a.StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) continue;
+            var dir = a.Substring("--out=".Length).Trim('"');
+            if (dir.Length == 0) continue;
+            System.IO.Directory.CreateDirectory(dir);
+            return dir;
+        }
+        var probe = AppContext.BaseDirectory;
+        for (int i = 0; i < 12 && !string.IsNullOrEmpty(probe); i++)
+        {
+            if (System.IO.File.Exists(System.IO.Path.Combine(probe, "CHANGELOG.md")))
+            {
+                var docs = System.IO.Path.Combine(probe, "docs");
+                System.IO.Directory.CreateDirectory(docs);
+                return docs;
+            }
+            probe = System.IO.Path.GetDirectoryName(probe.TrimEnd(System.IO.Path.DirectorySeparatorChar)) ?? "";
+        }
+        var fallback = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CuktechTray", "probe");
+        System.IO.Directory.CreateDirectory(fallback);
+        return fallback;
+    }
+
+    private static string OutFile(string[] args, string name) =>
+        System.IO.Path.Combine(OutDir(args), name);
+
     private static int Real(string[] args)
     {
         // 安装 / 卸载是一次性动作：不进消息循环、不抢单实例，跑完直接返回
@@ -130,7 +163,7 @@ internal static class Program
             {
                 probe.SetTab(tab);
                 if (demo) probe.SetDemoSnapshot(DemoSnapshot(tab, mergedDemo));
-                probe.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-" + (mergedDemo ? "demo-merged-" : demo ? "demo-" : "aot-") + name + sizeTag + ".png");
+                probe.SaveRender(OutFile(args, "tmp-" + (mergedDemo ? "demo-merged-" : demo ? "demo-" : "aot-") + name + sizeTag + ".png"));
             }
             LogSink.Write("[probe] rendered" + (demo ? " demo" : ""));
             return 0;
@@ -156,7 +189,7 @@ internal static class Program
                     g.DrawImage(one, new System.Drawing.Rectangle(i * (box + gap), 0, box, box));
                 }
             }
-            canvas.Save(@"D:\dsh projects\cuktech-ultra-tray\docs\shot-tray-icons.png",
+            canvas.Save(OutFile(args, "shot-tray-icons.png"),
                 System.Drawing.Imaging.ImageFormat.Png);
             LogSink.Write("[probe] rendered icons");
             return 0;
@@ -198,7 +231,7 @@ internal static class Program
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 g.DrawString(text, font, brush, new System.Drawing.RectangleF(0, 0, tw, th), fmt);
             }
-            tbmp.Save(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-taskbar-digit.png",
+            tbmp.Save(OutFile(args, "tmp-taskbar-digit.png"),
                 System.Drawing.Imaging.ImageFormat.Png);
             LogSink.Write("[probe] rendered taskbar digit " + text + " " + tw + "x" + th);
             return 0;
@@ -217,9 +250,9 @@ internal static class Program
             var wiz = new WizardWindow(settings, ui);
             if (!wiz.IsValid) { wiz.Dispose(); return 3; }
             wiz.ForceScale(wizScale);
-            wiz.DemoRender(0, @"D:\dsh projects\cuktech-ultra-tray\docs\tmp-wizard-welcome.png");
-            wiz.DemoRender(1, @"D:\dsh projects\cuktech-ultra-tray\docs\tmp-wizard-scan.png");
-            wiz.DemoRender(2, @"D:\dsh projects\cuktech-ultra-tray\docs\tmp-wizard-pick.png");
+            wiz.DemoRender(0, OutFile(args, "tmp-wizard-welcome.png"));
+            wiz.DemoRender(1, OutFile(args, "tmp-wizard-scan.png"));
+            wiz.DemoRender(2, OutFile(args, "tmp-wizard-pick.png"));
             wiz.Dispose();
             LogSink.Write("[probe] rendered wizard");
             return 0;
@@ -238,7 +271,7 @@ internal static class Program
             var consent = new ConsentWindow(settings);
             if (!consent.IsValid) { consent.Dispose(); return 3; }
             consent.ForceScale(cs);
-            consent.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-consent.png");
+            consent.SaveRender(OutFile(args, "tmp-consent.png"));
             consent.Dispose();
             LogSink.Write("[probe] rendered consent");
             return 0;
@@ -259,7 +292,7 @@ internal static class Program
             if (!dwin.IsValid) return 3;
             dwin.ForceScale(ss);
             dwin.UseDemoData();
-            dwin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-settings.png");
+            dwin.SaveRender(OutFile(args, "tmp-settings.png"));
             LogSink.Write("[probe] rendered settings");
             return 0;
         }
@@ -272,7 +305,7 @@ internal static class Program
             if (!hwin.IsValid) return 3;
             hwin.ForceScale(1f);
             hwin.UseDemoData();
-            hwin.WriteHitProbe(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-hits.txt");
+            hwin.WriteHitProbe(OutFile(args, "tmp-hits.txt"));
             LogSink.Write("[probe] hit rects written");
             return 0;
         }
@@ -292,7 +325,7 @@ internal static class Program
             if (!cwin.IsValid) return 3;
             cwin.ForceScale(cs2);
             cwin.UseDemoData();
-            cwin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-capture.png");
+            cwin.SaveRender(OutFile(args, "tmp-capture.png"));
             LogSink.Write("[probe] rendered capture");
             return 0;
         }
@@ -310,7 +343,7 @@ internal static class Program
             using var awin = new AboutWindow();
             if (!awin.IsValid) return 3;
             awin.ForceScale(as2);
-            awin.SaveRender(@"D:\dsh projects\cuktech-ultra-tray\docs\tmp-about.png");
+            awin.SaveRender(OutFile(args, "tmp-about.png"));
             LogSink.Write("[probe] rendered about");
             return 0;
         }

@@ -116,6 +116,12 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
 2. 构建：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Aot -Publish`。
    先 `Stop-Process` 掉残留的 `out\CuktechTray.exe`，否则链接阶段报 MSB3027（文件被另一进程使用）。
 3. 回归：`dist\CuktechTray.exe --selftest`，日志要出现 `[ok] 认证完成 …固件=…` 与 `[cfg] port_switch=0x0f`。
+3.5 **界面自检（用户 2026-11-26 要求写进流程）**：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\check-ui.ps1 -StrictHash`。
+   它构建框架依赖版、跑 `--probe-hits` 与全部 `--render-*`，把命中矩形跟 `tools/baseline/hits.txt`、
+   每张自查图的尺寸与像素哈希跟 `tools/baseline/renders.tsv` 逐行比，不一致就返回 1。
+   本地发版用 `-StrictHash`（含像素哈希）；CI 的 `.github/workflows/windows.yml` 只比命中矩形与图尺寸——
+   runner 上不一定有「Microsoft YaHei UI」，字体一变像素就变，尺寸是字体无关的。
+   **改了排版/命中区就要重新录基线**：`tools\check-ui.ps1 -UpdateBaseline`，并把两个基线文件一起提交。
 4. 取真实值：`(Get-Item dist\CuktechTray.exe).Length` 与 `Get-FileHash -Algorithm SHA256`，Release 正文里的字节数和哈希必须是实测的。
 5. 写两处文档：`CHANGELOG.md` / `CHANGELOG.en.md` 顶部加一节；`docs/release-<版本>.md` 与 `docs/release-<版本>.en.md` 写 Release 正文草稿
    （结构：一句话 / 这次改了什么按版本倒序 / 怎么升级 / 文件 / 校验 / 系统要求 / 已知）。
@@ -164,7 +170,8 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
 | AOT 版：扫码配对向导（欢迎 / 扫码 / 选设备三页，自绘） | `src/CuktechTrayAot/WizardWindow.cs` |
 | AOT 版：面板 / 任务栏 / 菜单 / 外壳 | `src/CuktechTrayAot/PanelWindow.cs`、`TaskbarWindow.cs`（含末尾的 `TaskbarPaint`）、`MenuWindow.cs`、`WinBase.cs`、`GdiText.cs` |
 | AOT 版：Win32 互操作（P/Invoke 集中地） | `src/CuktechTrayAot/Native.cs` |
-| AOT 版：入口与命令行开关（`--selftest` / `--render` / `--render --render-demo` / `--render-wizard` / `--setup` / `--wizard-demo` / `--panel` / `--check-update` / `--install` / `--uninstall`；更新的几条在 `Installer.RunCli`） | `src/CuktechTrayAot/Program.cs` |
+| AOT 版：入口与命令行开关（`--selftest` / `--render` / `--render --render-demo` / `--render-wizard` / `--probe-hits` / `--out=<目录>` / `--setup` / `--wizard-demo` / `--panel` / `--check-update` / `--install` / `--uninstall`；更新的几条在 `Installer.RunCli`） | `src/CuktechTrayAot/Program.cs` |
+| 界面自检（命中矩形 + 自查图基线） | `tools/check-ui.ps1`、`tools/baseline/hits.txt`、`tools/baseline/renders.tsv`；CI 在 `.github/workflows/windows.yml` |
 | AOT 版：安装 / 卸载 / 快捷方式 / 注册表 | `src/CuktechTrayAot/Installer.cs`（含 `Shortcut` 类） |
 | AOT 版：自动更新（下载 / 校验 / 替换 / 助手） | `src/CuktechTrayAot/Updater.cs` |
 | 查最新版本、挑哪个资产、走代理还是直连 | `src/CuktechTray/UpdateCheck.cs`（`RunAsync` / `PickAsset` / `Proxy`） |

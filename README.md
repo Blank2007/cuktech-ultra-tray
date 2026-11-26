@@ -312,7 +312,7 @@
 | `src/probe-rs/` | Rust 可行性验证（btleplug 扫描 + 托盘 spike） |
 | `src/aot-*-probe/` | AOT 迁移期的一次性探针（BLE 直连、纯 Win32 自绘、WinRT 通知），验完留着当证据 |
 | `tools/token-fetch/` | 最早的 Python 版扫码登录（保留作参考，C# 版已内置） |
-| `tools/` | 一堆 PowerShell 取证脚本：截屏、找窗口、验证 z 序、任务栏原型、生成 banner |
+| `tools/` | 一堆 PowerShell 取证脚本：截屏、找窗口、验证 z 序、任务栏原型、生成 banner、以及界面自检 `tools/check-ui.ps1`（基线在 `tools/baseline/`） |
 | `assets/` | README 顶部横幅（`tools/make-banner.py` 生成） |
 | `docs/` | 方案、协议调研、Rust 验证报告、层级修复记录、界面截图 |
 | `dist/` | 本地构建输出（发布好的 exe 与安装包，**不进仓库**） |
@@ -365,6 +365,17 @@ Explorer 重启后它会在 1 秒内自动重新挂上。
 **0.4.0 起只有 AOT 版在维护**。老的那套（`src\CuktechTray\` 的 WinForms 外壳）保留在仓库里当 0.3.3 的归档，
 `build.ps1` 不带 `-Aot` 时构建的就是它（单文件自包含约 72 MB），`build-setup.ps1` 打的老安装包也还在，但都不再跟进。
 AOT 需要 C 链接器：脚本会自己用 `.tools\lld\lld-link.exe` 加 `.tools\xwin` 里的 CRT 库，别绕开脚本手敲 `dotnet publish`。
+
+### 界面自检
+
+改界面之后跑一遍自检：它会编译一次、把每个窗口渲染成 PNG，并把所有按钮和开关的可点区域导成清单，
+跟仓库里的基线（`tools/baseline/`）逐项比——点错行、排版意外挪位都会让它失败。GitHub 上的 CI 跑的是同一份脚本：
+
+```powershell
+.\tools\check-ui.ps1                  # 比命中矩形 + 图片尺寸（字体无关，CI 用的就是这档）
+.\tools\check-ui.ps1 -StrictHash      # 连像素哈希一起比（本机装了「Microsoft YaHei UI」时才稳）
+.\tools\check-ui.ps1 -UpdateBaseline  # 改完排版、确认是想要的样子，重录基线并一起提交
+```
 
 ---
 

@@ -1,0 +1,35 @@
+name: windows
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "tools/**"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tools/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+# 0.5.3 之前 "--render" 系列只能证明「画对了」，证明不了「点得对」——
+# 设备设置里「空闲息屏」点成「方向锁」的错位就是这么漏出去的。
+# tools/check-ui.ps1 把命中矩形（--probe-hits）和每张自查图的尺寸跟 tools/baseline 里
+# 记录的基线逐行比，改布局却忘了同步基线，这条 job 就会红。
+jobs:
+  ui-checks:
+    name: ui checks (hit rects + render sizes)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: ui checks
+        shell: powershell
+        run: .\tools\check-ui.ps1
