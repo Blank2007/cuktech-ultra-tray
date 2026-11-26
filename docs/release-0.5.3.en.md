@@ -52,7 +52,7 @@ and made the dim text unreadable.
 | File | Size | What it is |
 | --- | --- | --- |
 | `CuktechTray-0.5.3-win.exe` | **11,073,024 bytes (10.56 MiB)** | Windows: portable build + installer in one file |
-| `CuktechTray-0.1.7-mac.zip` | rebuilt by CI on this tag (~1.55 MiB) | macOS 13+: unzips to `CuktechTray.app`, see [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.7-mac.zip` | **1,590,315 bytes (1.52 MiB)** | macOS 13+: unzips to `CuktechTray.app`, see [mac/README.md](../mac/README.md) |
 
 ## Verify
 
@@ -62,7 +62,11 @@ size   11,073,024 bytes
 SHA256 9BA1574943DA6F3EB33D87A554A603F8F053E926DB64471156A8CB453693EA96
 ```
 
-For `CuktechTray-0.1.7-mac.zip` use the digest GitHub shows in this page's asset list (CI repacking changes the timestamp every time).
+```
+file   CuktechTray-0.1.7-mac.zip   (packed by CI on this tag, so the zip carries a build timestamp)
+size   1,590,315 bytes
+SHA256 40281BF96BBEE8252A8324F2102E46D1BFFF8B5342F407A1380A828F90E5F562
+```
 
 `Get-FileHash .\CuktechTray-0.5.3-win.exe -Algorithm SHA256` on Windows, `shasum -a 256 CuktechTray-0.1.7-mac.zip` on macOS.
 

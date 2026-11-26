@@ -47,7 +47,7 @@ macOS 端修 [issue #6](https://github.com/Blank2007/cuktech-ultra-tray/issues/6
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.3-win.exe` | **11,073,024 字节（10.56 MiB）** | Windows：绿色版 + 安装器二合一 |
-| `CuktechTray-0.1.7-mac.zip` | 由 CI 在本 tag 上重新打出（约 1.55 MiB） | macOS 13+：解压出 `CuktechTray.app`，说明见 [mac/README.md](../mac/README.md) |
+| `CuktechTray-0.1.7-mac.zip` | **1,590,315 字节（1.52 MiB）** | macOS 13+：解压出 `CuktechTray.app`，说明见 [mac/README.md](../mac/README.md) |
 
 ## 校验
 
@@ -57,7 +57,11 @@ macOS 端修 [issue #6](https://github.com/Blank2007/cuktech-ultra-tray/issues/6
 SHA256 9BA1574943DA6F3EB33D87A554A603F8F053E926DB64471156A8CB453693EA96
 ```
 
-`CuktechTray-0.1.7-mac.zip` 的哈希以本页资产列表里 GitHub 显示的 digest 为准（CI 每次重新打包都会带新的时间戳）。
+```
+文件   CuktechTray-0.1.7-mac.zip   （CI 在本 tag 上打出，zip 里带打包时间戳）
+大小   1,590,315 字节
+SHA256 40281BF96BBEE8252A8324F2102E46D1BFFF8B5342F407A1380A828F90E5F562
+```
 
 Windows 用 `Get-FileHash .\CuktechTray-0.5.3-win.exe -Algorithm SHA256`、macOS 用 `shasum -a 256 CuktechTray-0.1.7-mac.zip` 对着看。
 
