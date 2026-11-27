@@ -19,8 +19,9 @@ A tiny app with no main window: **total power sits in digits on the taskbar**, n
 Click the tray icon (or the digits) and the panel opens with voltage / current / power for all four ports, plus a direct way to cut the power.
 
 * Talks to the charger over **direct Bluetooth BLE** (our own implementation of Xiaomi MIoT encrypted authentication) — no gateway, no Mi Home app running in the background, and no network traffic once connected
-* The whole program is **one exe, 10.4 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
-* Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself
+* The whole program is **one exe, 10.7 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
+* Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself,
+  version number in the file name included (`CuktechTray-0.5.8-win.exe` becomes `CuktechTray-0.5.9-win.exe`)
 * Tens of MB resident, sits quietly in the tray — no popups, no desktop clutter
 
 > 🍎 **The macOS build lives in [`mac/`](mac/README.md)**: same protocol, same colour rules, except the number goes into the
@@ -65,13 +66,13 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 📌 **Panel that stays on top** | Tray menu -> "Always on top": the panel stays above other windows. Different from "Pin panel to desktop", which only stops it auto-hiding; both can be on |
 | 💬 **About** | Tray menu -> "About": version, project page and who helped with this release. Opening it sends no request at all; only "Check for updates" touches the network (the automatic check at startup can be switched off in the menu) |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
-| 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
+| 📦 **Just one file** | A 10.7 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
 | 🔄 **Updates itself** | **It checks 8 seconds after every launch** (so Bluetooth connects first; switchable in the menu): a new version puts a small red dot on the tray icon's top-right corner and turns the menu entry into "检查更新…（有 0.5.5）". One click on that entry downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. The automatic check asks for a version number only and sends nothing about this machine |
 | 🪟 **The menu is the system menu** | The right-click menu is a real Windows menu (`TrackPopupMenuEx`): light/dark colours, font, corner radius, hover highlight, which side submenus open on, Esc and the arrow keys, click-outside-to-close — all handed to the system; toggles get the system check mark and the radio rows get a dot. Before 0.5.6 it was a self-drawn menu whose submenu items could not be clicked, so the whole thing went native |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
-> * Windows: `CuktechTray-<version>-win.exe` from the **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** — 10.4 MB, that single file is all you need
+> * Windows: `CuktechTray-<version>-win.exe` from the **[latest release](https://github.com/Blank2007/cuktech-ultra-tray/releases/latest)** — 10.7 MB, that single file is all you need
 > * macOS: `CuktechTray-<mac version>-mac.zip` from the same release — about 0.9 MB, unpack to a .app (universal, runs on Intel and Apple Silicon). macOS has its own version line, starting at `0.1.0`
 >
 > This repo holds source only; the exe is not checked in, so please download it from the [Releases](https://github.com/Blank2007/cuktech-ultra-tray/releases) page.
@@ -86,7 +87,7 @@ This document only covers how to use it.
 
 ## 0. Installation
 
-There is no separate installer file any more. `CuktechTray.exe` is one 10.4 MB file that plays both roles: portable build and installer.
+There is no separate installer file any more. `CuktechTray.exe` is one 10.7 MB file that plays both roles: portable build and installer.
 
 **Just run it**: copy it to any writable folder and double-click. `settings.json` and `logs/` are created next to it; the tray icon appears and the taskbar digits start flowing.
 
@@ -249,8 +250,11 @@ Tray menu -> "Per-port capture". Pick C1 / C2 / C3 / A, press "Start capture", i
 * Gaps longer than 4 s are skipped rather than filled in, so the total cannot grow out of nowhere
 * 30 s with no output, or 30 s without readings, ends the capture on its own and tells you which one it was
 * "Copy summary" puts the whole result on the clipboard, ready to paste into a chat window
-* "**Export CSV**" writes the per-second data to `Documents\CuktechTray\cuktech-capture-C1-20261127-214012.csv`,
-  UTF-8 with BOM, ready to open in Excel. Capture itself writes nothing — a file only appears when you press that button
+* "**Export CSV**" writes the per-second data into the program's own `captures\` directory — installed copies use
+  `%LOCALAPPDATA%\Programs\CuktechTray\captures\`, the portable build writes next to the exe; only when that directory
+  is not writable does it fall back to `Documents\CuktechTray\`. The file name looks like
+  `cuktech-capture-C1-20261127-214012.csv`, UTF-8 with BOM, ready to open in Excel.
+  Capture itself writes nothing — a file only appears when you press that button
 
 ### About
 
@@ -381,7 +385,7 @@ You need the .NET 8 SDK. Double-click **build.cmd** to build, **run.cmd** to lau
 If your execution policy blocks the `.ps1` scripts, start them with `powershell -ExecutionPolicy Bypass -File build.ps1`.
 
 ```powershell
-.\build.ps1 -Aot             # NativeAOT build (0.4.0) -> src\CuktechTrayAot\out\CuktechTray.exe (about 10.4 MB)
+.\build.ps1 -Aot             # NativeAOT build (0.4.0) -> src\CuktechTrayAot\out\CuktechTray.exe (about 10.7 MB)
 .\build.ps1 -Aot -Publish    # also copy it over dist\CuktechTray.exe
 .\run.ps1 -Aot -Panel        # launch the AOT build and pop the panel
 .\run.ps1                    # launch whatever was built last

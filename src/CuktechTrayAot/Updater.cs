@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace CuktechTray;
 
@@ -33,6 +34,54 @@ internal static class Updater
     public static string StagedPath => Path.Combine(Installer.SelfDir, StagedName);
 
     public static string BackupPath => Installer.SelfExe + BackupSuffix;
+
+    /// <summary>
+    /// 更新完之后 exe 该叫什么名字。绿色版是下载下来就带着版本号的文件（CuktechTray-0.5.7-win.exe），
+    /// 如果更新只覆盖内容不改名，文件名上的版本号就一直停在下载那一版 —— 用户从资源管理器看
+    /// 会以为「更新没生效」。所以只要名字本来就是 CuktechTray-&lt;版本&gt;-win.exe 这个形状，
+    /// 就让版本号跟着新 exe 走；安装版（固定叫 CuktechTray.exe）和用户自己改过的名字都不动。
+    /// </summary>
+    public static string VersionedTarget(string currentPath, string payload)
+    {
+        try
+        {
+            string full = Path.GetFullPath(currentPath);
+            string dir = Path.GetDirectoryName(full) ?? ".";
+            string name = Path.GetFileName(full);
+            Match m = Regex.Match(name, @"^(?<head>.+?)-(?<ver>\d+\.\d+\.\d+)(?<tail>(?:-win)?\.exe)$", RegexOptions.IgnoreCase);
+            if (!m.Success) return currentPath;
+
+            string? ver = ExeVersionOf(payload);
+            if (ver is null || ver == m.Groups["ver"].Value) return currentPath;
+
+            string candidate = m.Groups["head"].Value + "-" + ver + m.Groups["tail"].Value;
+            string target = Path.Combine(dir, candidate);
+            LogSink.Write("[update] 文件名里的版本号跟着走：" + name + " -> " + candidate);
+            return target;
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write("[update] 算新文件名失败：" + ex.Message);
+            return currentPath;
+        }
+    }
+
+    /// <summary>从 exe 的版本资源里取 x.y.z（拿不到返回 null）。</summary>
+    public static string? ExeVersionOf(string exePath)
+    {
+        try
+        {
+            var info = FileVersionInfo.GetVersionInfo(exePath);
+            string? raw = info.FileVersion ?? info.ProductVersion;
+            if (string.IsNullOrEmpty(raw)) return null;
+            Match m = Regex.Match(raw, @"\d+\.\d+\.\d+");
+            return m.Success ? m.Value : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public readonly record struct DownloadResult(bool Ok, string Path, string Error);
 
@@ -214,11 +263,16 @@ internal static class Updater
         // 上一次留下的 .old 不算数，先清掉，否则 Replace 会以为已经备份过
         try { if (File.Exists(target + BackupSuffix)) File.Delete(target + BackupSuffix); } catch { }
 
+        // 绿色版的名字里带着版本号（CuktechTray-0.5.7-win.exe）：更新完要换成新版本号，
+        // 否则资源管理器里看到的永远是下载那一版，用户会以为没升上去。
+        string dest = VersionedTarget(target, payload);
+        bool renamed = !Installer.SamePath(dest, target);
+
         bool replaced = false;
         string lastError = string.Empty;
         for (int i = 0; i < 60; i++)
         {
-            if (Replace(target, payload, out lastError)) { replaced = true; break; }
+            if (Replace(dest, payload, out lastError)) { replaced = true; break; }
             Thread.Sleep(500);
         }
 
@@ -228,12 +282,30 @@ internal static class Updater
             return 1;
         }
 
-        LogSink.Write("[update] 已替换 " + target);
+        LogSink.Write("[update] 已替换 " + dest);
+
+        if (renamed)
+        {
+            // 旧名字那份已经没用了；删不掉就交给重启后删，别让用户看到两个 exe
+            try
+            {
+                File.Delete(target);
+                LogSink.Write("[update] 旧文件名已删除 " + target);
+            }
+            catch (Exception ex)
+            {
+                LogSink.Write("[update] 旧文件名删不掉（重启后删）：" + ex.Message);
+                try { MoveFileExW(target, null, MOVEFILE_DELAY_UNTIL_REBOOT); } catch { }
+            }
+
+            // 开机自启、桌面/开始菜单快捷方式、卸载项都还指着旧路径，一起搬过去
+            Installer.FollowExeRename(target, dest);
+        }
 
         try
         {
-            string? dir = Path.GetDirectoryName(target);
-            var psi = new ProcessStartInfo(target)
+            string? dir = Path.GetDirectoryName(dest);
+            var psi = new ProcessStartInfo(dest)
             {
                 UseShellExecute = false,
                 WorkingDirectory = dir ?? Environment.CurrentDirectory,
@@ -376,9 +448,22 @@ internal static class Updater
             bool kept = !Replace(target, Path.Combine(dir, "missing.exe"), out _)
                         && File.ReadAllText(target) == "new-build";
 
-            bool ok = replaced && kept;
+            // 文件名里的版本号：只有「名字里本来带 x.y.z」的才跟着新 exe 走，
+            // 固定名的安装版（CuktechTray.exe）必须原样不动。
+            // 用自己这份 exe 当「新版载荷」来读版本号，纯文本那个载荷读不到版本资源。
+            string selfVer = ExeVersionOf(Installer.SelfExe) ?? "";
+            string named = Path.Combine(dir, "CuktechTray-0.5.7-win.exe");
+            string keepName = Path.Combine(dir, "CuktechTray.exe");
+            bool nameKept = Installer.SamePath(VersionedTarget(keepName, Installer.SelfExe), keepName);
+            string expected = Path.Combine(dir, "CuktechTray-" + selfVer + "-win.exe");
+            bool nameMoves = selfVer.Length > 0
+                             && Installer.SamePath(VersionedTarget(named, Installer.SelfExe), expected);
+
+            bool ok = replaced && kept && nameKept && nameMoves;
             LogSink.Write("[update-selftest] " + (ok ? "ok" : "失败")
                 + " 替换=" + replaced + " 未误伤=" + kept
+                + " 固定名不动=" + nameKept + " 带版本号改名=" + nameMoves
+                + " 自身版本=" + (selfVer.Length > 0 ? selfVer : "?")
                 + (replaced ? "" : " err=" + err1));
 
             try { if (File.Exists(backup)) File.Delete(backup); } catch { }

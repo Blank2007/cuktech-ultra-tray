@@ -267,6 +267,78 @@ internal static class Installer
         else run.DeleteValue(RunValueName, throwOnMissingValue: false);
     }
 
+    /// <summary>
+    /// exe 改名之后，把还指着旧路径的东西一起搬过去：开机自启（HKCU\...\Run）、
+    /// 桌面与开始菜单的快捷方式、卸载项里的显示图标与卸载命令。
+    /// 只在这些条目确实指向旧路径时才动；用户自己的快捷方式、别处的启动项一概不碰。
+    /// </summary>
+    public static void FollowExeRename(string oldExe, string newExe)
+    {
+        string oldFull = Path.GetFullPath(oldExe);
+        string newFull = Path.GetFullPath(newExe);
+        string newDir = Path.GetDirectoryName(newFull) ?? SelfDir;
+
+        try
+        {
+            using var run = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            string? value = run?.GetValue(RunValueName) as string;
+            if (run is not null && value is not null && value.IndexOf(oldFull, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                run.SetValue(RunValueName, Quote(newFull) + " --tray-only", RegistryValueKind.String);
+                LogSink.Write("[install] 开机自启改指新文件名 " + newFull);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write("[install] 改自启失败：" + ex.Message);
+        }
+
+        try
+        {
+            foreach (string lnk in new[] { DesktopShortcut, StartMenuShortcut })
+            {
+                string? current = Shortcut.ReadTarget(lnk);
+                if (current is null) continue;
+                if (current.IndexOf(oldFull, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                Shortcut.Create(lnk, newFull, newDir, AppName);
+                LogSink.Write("[install] 快捷方式改指新文件名 " + lnk);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write("[install] 改快捷方式失败：" + ex.Message);
+        }
+
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(UninstallKeyPath, writable: true);
+            if (key is not null)
+            {
+                bool touched = false;
+                foreach (string name in new[] { "DisplayIcon", "UninstallString", "QuietUninstallString" })
+                {
+                    string? v = key.GetValue(name) as string;
+                    if (v is null || v.IndexOf(oldFull, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    key.SetValue(name, v.Replace(oldFull, newFull, StringComparison.OrdinalIgnoreCase), RegistryValueKind.String);
+                    touched = true;
+                }
+                string? loc = key.GetValue("InstallLocation") as string;
+                if (touched || loc is null)
+                {
+                    key.SetValue("InstallLocation", newDir, RegistryValueKind.String);
+                }
+                // 版本号要从新文件里读：写这段话的是旧版 exe 的助手副本，AppVersion 还是旧的
+                string? newVer = Updater.ExeVersionOf(newFull);
+                if (newVer is not null) key.SetValue("DisplayVersion", newVer + ".0", RegistryValueKind.String);
+                LogSink.Write("[install] 卸载项改指新文件名（touched=" + touched + "）");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write("[install] 改卸载项失败：" + ex.Message);
+        }
+    }
+
     // ---------------- 卸载 ----------------
 
     public static bool Uninstall(out string error)

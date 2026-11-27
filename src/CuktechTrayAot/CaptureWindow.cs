@@ -342,7 +342,7 @@ internal sealed class CaptureWindow : WinBase
     }
 
     /// <summary>
-    /// 把逐秒样本写成 CSV，落在「文档\\CuktechTray」下，导完弹个框把路径说出来。
+    /// 把逐秒样本写成 CSV，落在程序旁边的 captures\\ 下（写不进去才退回「文档\\CuktechTray」），导完弹个框把路径说出来。
     /// 采集本身不落盘（m12203 的要求），这里是用户亲手点的动作，所以算例外。
     /// </summary>
     private void ExportCsv()
@@ -356,8 +356,20 @@ internal sealed class CaptureWindow : WinBase
 
         try
         {
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CuktechTray");
-            Directory.CreateDirectory(dir);
+            // 导出的文件也跟程序待在一起（可执行文件旁边的 captures\），跟 settings.json、logs 一样，
+            // 拷走整个文件夹就搬完了；只有安装目录真的写不进去（比如放在 Program Files 下）才退回「文档」。
+            string dir = Path.Combine(Installer.SelfDir, "captures");
+            try
+            {
+                Directory.CreateDirectory(dir);
+                if (!Updater.CanWriteDir(dir)) throw new IOException("安装目录不可写：" + dir);
+            }
+            catch (Exception ex)
+            {
+                LogSink.Write("[capture] 安装目录存不了导出文件，改用文档目录：" + ex.Message);
+                dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CuktechTray");
+                Directory.CreateDirectory(dir);
+            }
             string path = Path.Combine(dir, res.DefaultFileName);
             // 带 BOM 的 UTF-8：Excel 双击打开才认得出中文表头，不带会显示成乱码
             File.WriteAllText(path, res.CsvText(), new UTF8Encoding(true));

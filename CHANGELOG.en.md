@@ -4,6 +4,26 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.9 — 2026-11-28
+
+After an update the file name kept its old version number, and captured data went to the system Documents
+folder — both fixed.
+
+* **The version number inside the exe name now follows the update** (`Updater.VersionedTarget` / `Updater.ExeVersionOf`)
+  * The bug: self-update copied the new file over the **same** path, so the name stayed at whatever version
+    it was first downloaded as (one user's copy was still `CuktechTray-0.4.6-win.exe` while the binary was 0.5.x)
+  * Now: if the current name carries an `x.y.z`, a new target name is built from the **new exe's** version;
+    the file is replaced under the new name, the old name is deleted, and `Installer.FollowExeRename` repoints
+    the HKCU autostart value, the desktop / Start-menu shortcuts and the uninstall entry (no dangling links)
+  * The installed copy keeps its fixed `CuktechTray.exe` name — it never had a version in it
+* **Single-port capture CSVs default to the install directory** (`CaptureWindow.ExportCsv`)
+  * Installed: `%LOCALAPPDATA%\Programs\CuktechTray\captures\`
+  * Portable: `captures\` next to the exe
+  * Only when that directory is not writable does it fall back to `Documents\CuktechTray\`, and it says so in the log
+* `--update-selftest` gained two assertions (fixed name untouched, versioned name renamed); `--apply-update`
+  was verified end to end as well (0.5.7 name → 0.5.8 name, old file removed, new one in place)
+* Version 0.5.8 → **0.5.9**
+
 ## macOS 0.1.9 — 2026-11-28
 
 The macOS panel goes from one long page to **four tabs**, matching the Windows layout; the chart tab picks up the
