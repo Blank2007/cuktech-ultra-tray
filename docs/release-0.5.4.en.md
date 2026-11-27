@@ -70,7 +70,7 @@ are menu choices now.
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.4-win.exe` | **11,152,384 bytes (10.64 MiB)** | Windows: portable build and installer in one |
-| `CuktechTray-0.1.7-mac.zip` | built by CI on this tag | macOS: unchanged this time, still 0.1.7; no need to update if you have it |
+| `CuktechTray-0.1.7-mac.zip` | **1,590,315 bytes (1.52 MiB)** | macOS: unchanged this time, still 0.1.7; no need to update if you have it |
 
 ## Verification
 
@@ -79,6 +79,10 @@ file    CuktechTray-0.5.4-win.exe   (built locally as CuktechTray.exe, same file
 size    11,152,384 bytes
 version 0.5.4.0
 SHA256  E703B79F121B14E1794F6BBE18CE9651283BA18329B987E11FEA0F48A6015C5C
+
+file    CuktechTray-0.1.7-mac.zip     (packed by CI, unpacks to CuktechTray.app)
+size    1,590,315 bytes
+SHA256  75E1E5A812A3E053B414EB2DE9887210DD8FC1BB66FFBE20B0DEA61175DE7BA0
 ```
 
 Compare with `Get-FileHash .\CuktechTray-0.5.4-win.exe -Algorithm SHA256`.
