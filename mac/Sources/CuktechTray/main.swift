@@ -122,6 +122,18 @@ if args.contains("--capture-demo") {
         print("[wizard] demo window shown (\(screen))")
         fflush(stdout)
     }
+} else if let panelArg = args.first(where: { $0 == "--panel-demo" || $0.hasPrefix("--panel-demo=") }) {
+    // 文档与 CI 截图用：把面板的某一页摆出来（read / control / mode / chart / chart-solo），
+    // 数据是造的，不联网、不碰蓝牙。
+    let name = panelArg.contains("=")
+        ? String(panelArg.split(separator: "=", maxSplits: 1)[1])
+        : "read"
+    let page = PanelTab.demo(name) ?? .read
+    DispatchQueue.main.async {
+        PanelDemoController.shared.show(page: page, soloC3: name == "chart-solo")
+        print("[panel] demo window shown (\(name))")
+        fflush(stdout)
+    }
 } else {
     // 正式启动路径：这里才可能弹「首次启动隐私说明」那道门（在 applicationDidFinishLaunching 里）。
     app.delegate = AppDelegate(settings: AppSettings.load())

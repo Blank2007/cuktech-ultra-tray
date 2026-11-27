@@ -30,6 +30,9 @@ public struct AppSettings: Codable, Sendable {
     /// 查到就在菜单那行点个红点，不弹窗；不想要就把它改成 false。
     /// 老配置没有这个键，按 **true** 算 —— 和 Windows 版一致。
     public var checkUpdatesOnStart: Bool = true
+    /// 曲线页看多久（秒）：60 / 300 / 900 / 1800。点曲线页右上角胶囊循环切换。
+    /// 老配置没有这个键，按 60 算（和 Windows 版 Settings.ChartSeconds 的默认值一致）。
+    public var chartSeconds: Int = 60
 
     public init() {}
 
@@ -37,6 +40,7 @@ public struct AppSettings: Codable, Sendable {
         case mac, tokenHex, pollInterval, showWattsInMenuBar, privacyAccepted
         case peripheralId, alwaysOnTop
         case fixedMenuBarWidth, glassPanel, checkUpdatesOnStart
+        case chartSeconds
     }
 
     /// 手写解码：缺字段一律回落到默认值，别让新增字段把老用户的 config.json 判成坏文件。
@@ -53,6 +57,8 @@ public struct AppSettings: Codable, Sendable {
         fixedMenuBarWidth = try c.decodeIfPresent(Bool.self, forKey: .fixedMenuBarWidth) ?? true
         glassPanel = try c.decodeIfPresent(Bool.self, forKey: .glassPanel) ?? false
         checkUpdatesOnStart = try c.decodeIfPresent(Bool.self, forKey: .checkUpdatesOnStart) ?? true
+        let chart = try c.decodeIfPresent(Int.self, forKey: .chartSeconds) ?? 60
+        chartSeconds = (chart >= 10 && chart <= 1800) ? chart : 60
     }
 
     public static var directory: URL {

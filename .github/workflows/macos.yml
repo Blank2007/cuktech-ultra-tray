@@ -76,6 +76,19 @@ jobs:
           done
           ls -l wizard-*.png
           true
+      - name: panel screenshots
+        run: |
+          set +e
+          for page in read control mode chart chart-solo; do
+            dist/CuktechTray.app/Contents/MacOS/CuktechTray --panel-demo=$page &
+            sleep 4
+            screencapture -x panel-$page.png
+            echo "[shot] panel-$page exit=$?"
+            pkill -f CuktechTray
+            sleep 1
+          done
+          ls -l panel-*.png
+          true
       - name: pack
         run: bash mac/scripts/package.sh dist
       - uses: actions/upload-artifact@v4
@@ -85,6 +98,7 @@ jobs:
             dist/*.zip
             shot.png
             wizard-*.png
+            panel-*.png
           if-no-files-found: warn
 
   # tag（与 Windows 同版本号，例如 v0.4.5）时把 .app 打成 zip 传到 Release。

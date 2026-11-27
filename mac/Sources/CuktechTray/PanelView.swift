@@ -3,6 +3,35 @@ import AppKit
 import SwiftUI
 import CuktechCore
 
+/// 面板的四个页签。顺序与 Windows 版一致（读数 / 控制 / 模式 / 曲线），
+/// 两边的截图摆在一起能对上号。
+enum PanelTab: Int, CaseIterable {
+    case read = 0
+    case control
+    case mode
+    case chart
+
+    var title: String {
+        switch self {
+        case .read: return "读数"
+        case .control: return "控制"
+        case .mode: return "模式"
+        case .chart: return "曲线"
+        }
+    }
+
+    /// --panel-demo 用的名字（CI 截图按这个名字摆页）。
+    static func demo(_ name: String) -> PanelTab? {
+        switch name {
+        case "read": return .read
+        case "control": return .control
+        case "mode": return .mode
+        case "chart", "chart-solo": return .chart
+        default: return nil
+        }
+    }
+}
+
 /// 面板的数据源。所有 UI 状态都在主线程上改，蓝牙动作丢回 DeviceSession。
 /// 这里不标 @MainActor：main.swift 的顶层代码直接 new，Swift 5 语言模式下标了反而绕。
 /// 真正保证主线程的是调用方 —— ticker 跑在 MainActor 上，按钮回调也都在主线程。
@@ -25,6 +54,10 @@ final class PanelModel: ObservableObject {
     @Published var capturePort: Int?
     @Published var captureStats: CaptureAccumulator?
     @Published var captureStartedAt: Date?
+    /// 当前页签。0.1.9 起面板从「一页纵向」改成四页签，与 Windows 版同构。
+    @Published var tab: PanelTab = .read
+    /// 曲线页看多久：60 / 300 / 900 / 1800 秒，点胶囊循环。真值在 AppSettings.chartSeconds。
+    @Published var chartSeconds: Int = 60
 
     var onReconnect: (() -> Void)?
     var onSetPort: ((Int, Bool) -> Void)?
@@ -37,6 +70,13 @@ final class PanelModel: ObservableObject {
     var onPollIntervalChanged: ((Double) -> Void)?
     var onStartCapture: ((Int) -> Void)?
     var onStopCapture: (() -> Void)?
+    /// 曲线页换了时长。TrayController 负责写进 config.json。
+    var onChartSecondsChanged: ((Int) -> Void)?
+
+    /// 内存里的功率历史（不写盘）。曲线页读它。
+    /// 不是 @Published：曲线跟着 snapshot 每 400ms 一起重画，多一个发布属性只会让
+    /// 整个面板多刷一遍。
+    private var history = PowerHistory()
 
     func reconnect() { onReconnect?() }
 
@@ -74,6 +114,51 @@ final class PanelModel: ObservableObject {
         onStopCapture?()
     }
 
+    // MARK: - 曲线
+
+    /// 记一拍。节流（两拍至少隔 0.4s）在 PowerHistory 里做。
+    func record(_ snap: DeviceSnapshot) {
+        history.add(snap)
+    }
+
+    /// 曲线页要画的点（最近 seconds 秒）。
+    func chartPoints(_ seconds: Double) -> [PowerPoint] {
+        history.snapshot(seconds)
+    }
+
+    /// 演示数据：--panel-demo 截图用，不碰蓝牙。
+    func seedHistory(_ h: PowerHistory) {
+        history = h
+    }
+
+    static let spanChoices = [60, 300, 900, 1800]
+
+    static func spanLabel(_ sec: Int) -> String {
+        switch sec {
+        case 60: return "最近 1 分钟"
+        case 300: return "最近 5 分钟"
+        case 900: return "最近 15 分钟"
+        case 1800: return "最近 30 分钟"
+        default: return "最近 \(sec) 秒"
+        }
+    }
+
+    /// 点时长胶囊：在四档预设里循环。当前值不在预设里（手改过 config.json）就从最小那档开始。
+    func cycleChartSpan() {
+        let cur = chartSeconds
+        var next = Self.spanChoices[0]
+        if let i = Self.spanChoices.firstIndex(of: cur) {
+            next = Self.spanChoices[(i + 1) % Self.spanChoices.count]
+        }
+        setChartSeconds(next)
+    }
+
+    func setChartSeconds(_ sec: Int) {
+        guard sec >= 10, sec <= 1800, sec != chartSeconds else { return }
+        chartSeconds = sec
+        onChartSecondsChanged?(sec)
+    }
+
     /// 采集中顶部那行字：已经采了多久、充进去多少。每秒随采样刷新。
     var captureHeadline: String? {
         guard capturePort != nil, let stats = captureStats, let started = captureStartedAt else {
@@ -97,12 +182,13 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().opacity(0.25).padding(.vertical, 9)
-            ports
-            Divider().opacity(0.25).padding(.vertical, 9)
-            scenes
+            tabBar
+                .padding(.top, 8)
+            page
+                .padding(.top, 8)
+            Spacer(minLength: 0)
             footer
-                .padding(.top, 12)
+                .padding(.top, 8)
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -160,21 +246,56 @@ struct PanelView: View {
         .offset(y: -1)
     }
 
-    private var ports: some View {
-        VStack(spacing: 6) {
-            ForEach(0..<4, id: \.self) { i in
-                portRow(slot: snap.ports[i])
+    /// 四个页签。选中项给一层淡底 + 亮字；用普通按钮而不是 Picker，
+    /// 免得「窗口还没被激活时第一下点击被系统吃掉」那个老毛病。
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(PanelTab.allCases, id: \.self) { t in
+                Button {
+                    model.tab = t
+                } label: {
+                    Text(t.title)
+                        .font(.system(size: 11, weight: model.tab == t ? .medium : .regular))
+                        .foregroundColor(model.tab == t ? Theme.fg : Theme.dim)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(model.tab == t ? Theme.cardOn : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private func portRow(slot: PortSlot) -> some View {
+    @ViewBuilder
+    private var page: some View {
+        switch model.tab {
+        case .read: readPage
+        case .control: controlPage
+        case .mode: modePage
+        case .chart: ChartPage(model: model, snap: snap)
+        }
+    }
+
+    // MARK: - 读数页
+
+    private var readPage: some View {
+        VStack(spacing: 6) {
+            ForEach(0..<4, id: \.self) { i in
+                readRow(slot: snap.ports[i])
+            }
+        }
+    }
+
+    private func readRow(slot: PortSlot) -> some View {
         // C3 与 A 共用一个功率计时，搭车那一路没有自己的数字：名字不换、读数写暗色「并入 C3+A」。
         let passenger = snap.isMergedPassenger(slot)
         let bar = passenger
             ? WattStyle.dim
             : (slot.enabled ? (slot.watts > 0.05 ? WattStyle.port(slot.watts) : WattStyle.ok) : WattStyle.dim)
-        // 0.1.3 起这一行多了采集按钮，间距收到 8 才不至于把 340pt 的面板挤爆。
         return HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Theme.color(bar))
@@ -200,14 +321,6 @@ struct PanelView: View {
                                              : (slot.enabled ? WattStyle.port(slot.watts) : WattStyle.dim)))
 
             captureButton(for: slot)
-
-            Toggle("", isOn: Binding(
-                get: { slot.enabled },
-                set: { model.setPort(slot.zeroBasedIndex, $0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(PanelSwitchStyle())
-            .disabled(!snap.connected || model.busy)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
@@ -238,20 +351,68 @@ struct PanelView: View {
               : "采集这个口的电量：每秒读一次，连续 30 秒没输出就结束")
     }
 
-    private var scenes: some View {
+    // MARK: - 控制页
+
+    private var controlPage: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // 这里以前右边挂着「每 1 秒」的读数间隔开关，两件事挤在一行，
-            // 看上去就像「充电模式每 1 秒刷新/自动切换一次」——很误导人。
-            // 读数间隔是 App 自己的刷新频率，挪到页脚去；这边只留一句「这是个按钮」。
-            HStack(spacing: 6) {
-                Text("充电模式")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.dim)
-                Spacer(minLength: 0)
-                Text("点一下切换")
-                    .font(.system(size: 9.5))
-                    .foregroundColor(Theme.dim.opacity(0.55))
+            Text("点右边的开关，充电器立刻就断/通，不用再保存")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.dim)
+                .lineLimit(1)
+
+            VStack(spacing: 6) {
+                ForEach(0..<4, id: \.self) { i in
+                    controlRow(slot: snap.ports[i])
+                }
             }
+        }
+    }
+
+    private func controlRow(slot: PortSlot) -> some View {
+        let passenger = snap.isMergedPassenger(slot)
+        let bar = passenger
+            ? WattStyle.dim
+            : (slot.enabled ? WattStyle.ok : WattStyle.dim)
+        let stateText: String = passenger
+            ? DeviceSnapshot.mergedPassengerText
+            : (slot.enabled ? "通电" : "断电")
+        return HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Theme.color(bar))
+                .frame(width: 3, height: 26)
+
+            Text(snap.rowName(slot))
+                .font(.system(size: 11))
+                .foregroundColor(Theme.dim)
+
+            Spacer(minLength: 0)
+
+            Text(stateText)
+                .font(.system(size: 10.5))
+                .foregroundColor(passenger ? Theme.dim.opacity(0.8) : (slot.enabled ? Theme.ok : Theme.dim))
+
+            Toggle("", isOn: Binding(
+                get: { slot.enabled },
+                set: { model.setPort(slot.zeroBasedIndex, $0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(PanelSwitchStyle())
+            .disabled(!snap.connected || model.busy || passenger)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.card))
+    }
+
+    // MARK: - 模式页
+
+    private var modePage: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("点一下就切，充电器立刻换策略，不用再保存")
+                .font(.system(size: 10))
+                .foregroundColor(Theme.dim)
+                .lineLimit(1)
+
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
                 ForEach(0..<SceneMode.all.count, id: \.self) { i in
                     let item = SceneMode.all[i]
@@ -300,7 +461,7 @@ struct PanelView: View {
     /// 位置放在页脚、和「重新连接」一边：这是 App 自己的刷新频率，不是充电器的设置项。
     /// （原来挂在「充电模式」标题右边，读起来就像充电模式每 1 秒在自动切。）
     ///
-    /// 这里不用 SwiftUI 的 `Menu`：窗口没被激活（面板刚弹出时就是这样）时，`Menu` 的第一下点击
+    /// 这里不用 SwiftUI 的 Menu：窗口没被激活（面板刚弹出时就是这样）时，第一下点击
     /// 不弹菜单，得再点一次——和开关那个「点一下才变」是同一个毛病。自己弹 NSMenu 就没这问题。
     private var pollIntervalMenu: some View {
         Button {
@@ -375,6 +536,243 @@ struct PanelView: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
                 .foregroundColor(Theme.dim)
+        }
+    }
+}
+
+/// 曲线页（0.1.9 新增，语义对齐 Windows 版 PanelWindow.PaintChartPage）。
+///
+/// 三条设计原则，和 Windows 那边是同一套：
+/// 1. **哪一路在输出**：副标题直接点名（「在输出：C3」），单口输出时不用回头对图例；
+/// 2. **哪条线是哪一路**：图例里没出过力的那几路压暗，每条线末端直接写着口名；
+/// 3. **线要断**：拔线 / 没读数的地方不连线，否则「拔了线」看着像「功率平滑下降」。
+struct ChartPage: View {
+    @ObservedObject var model: PanelModel
+    let snap: DeviceSnapshot
+
+    /// 四路各自的线色：蓝 / 绿 / 橙 / 紫，与 Windows 版一致。
+    static let lineColors: [Color] = [
+        Color(red: 59 / 255, green: 130 / 255, blue: 246 / 255),
+        Color(red: 34 / 255, green: 197 / 255, blue: 94 / 255),
+        Color(red: 245 / 255, green: 158 / 255, blue: 11 / 255),
+        Color(red: 167 / 255, green: 139 / 255, blue: 250 / 255),
+    ]
+
+    private var points: [PowerPoint] {
+        model.chartPoints(Double(model.chartSeconds))
+    }
+
+    /// 每一路在窗口里的峰值：整条都是 0 的那一路不画线（画出来就是贴在 0 轴上的横线）。
+    private var peaks: [Double] {
+        var p = [Double](repeating: 0, count: 4)
+        for pt in points {
+            for i in 0..<4 {
+                let v = pt.at(i)
+                if v > p[i] { p[i] = v }
+            }
+        }
+        return p
+    }
+
+    /// 纵轴顶：20W 一档向上取整，最小 20W。
+    private var topWatts: Double {
+        let m = peaks.max() ?? 0
+        return m <= 20 ? 20 : (m / 20).rounded(.up) * 20
+    }
+
+    /// 口名：C3 与 A 合并时第三路写 C3+A。
+    private func portName(_ i: Int) -> String {
+        switch i {
+        case 0: return "C1"
+        case 1: return "C2"
+        case 2: return snap.pairMerged ? "C3+A" : "C3"
+        default: return "A"
+        }
+    }
+
+    private var subtitle: String {
+        var live: [String] = []
+        for i in 0..<4 where peaks[i] >= 0.5 {
+            live.append(portName(i))
+        }
+        return live.isEmpty ? "每路一条线，点右边换时长" : "在输出：" + live.joined(separator: "、")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.dim)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Button {
+                    model.cycleChartSpan()
+                } label: {
+                    Text(PanelModel.spanLabel(model.chartSeconds))
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.fg)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Theme.card))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help("点一下换一档时长：1 / 5 / 15 / 30 分钟")
+            }
+
+            Canvas { ctx, size in
+                draw(ctx: ctx, size: size)
+            }
+            .frame(height: 168)
+
+            HStack(spacing: 0) {
+                ForEach(0..<4, id: \.self) { i in
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(peaks[i] >= 0.5 ? Self.lineColors[i] : Theme.dim.opacity(0.35))
+                            .frame(width: 8, height: 8)
+                        Text(portName(i))
+                            .font(.system(size: 9.5))
+                            .foregroundColor(peaks[i] >= 0.5 ? Theme.dim : Theme.dim.opacity(0.45))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            if points.count >= 2 {
+                HStack {
+                    Text("峰值 " + WattStyle.format(totalPeak) + " W")
+                    Spacer(minLength: 0)
+                    Text("平均 " + WattStyle.format(totalAverage) + " W")
+                }
+                .font(.system(size: 9.5))
+                .foregroundColor(Theme.dim)
+            }
+        }
+    }
+
+    private var totalPeak: Double {
+        var peak = 0.0
+        for pt in points {
+            let w = (0..<4).reduce(0.0) { $0 + max(0, pt.at($1)) }
+            if w > peak { peak = w }
+        }
+        return peak
+    }
+
+    private var totalAverage: Double {
+        guard !points.isEmpty else { return 0 }
+        let sum = points.reduce(0.0) { acc, pt in
+            acc + (0..<4).reduce(0.0) { $0 + max(0, pt.at($1)) }
+        }
+        return sum / Double(points.count)
+    }
+
+    private func draw(ctx: GraphicsContext, size: CGSize) {
+        let axisW: CGFloat = 32
+        let x0: CGFloat = axisW
+        let x1: CGFloat = size.width
+        let y0: CGFloat = 4
+        let y1: CGFloat = size.height - 4
+        let top = topWatts
+
+        // 三条水平参考线（0 / 一半 / 顶），左边写刻度
+        for k in 0...2 {
+            let v = top * Double(k) / 2.0
+            let y = y1 - (y1 - y0) * CGFloat(v / top)
+            var line = Path()
+            line.move(to: CGPoint(x: x0, y: y))
+            line.addLine(to: CGPoint(x: x1, y: y))
+            ctx.stroke(line,
+                       with: .color(Color.white.opacity(k == 0 ? 0.14 : 0.07)),
+                       lineWidth: 1)
+            if k > 0 {
+                ctx.draw(Text(String(Int(v.rounded())) + "W")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(Theme.dim.opacity(0.85)),
+                         at: CGPoint(x: x0 - 5, y: y),
+                         anchor: .trailing)
+            }
+        }
+        ctx.draw(Text("0W")
+                    .font(.system(size: 8.5))
+                    .foregroundColor(Theme.dim.opacity(0.85)),
+                 at: CGPoint(x: x0 - 5, y: y1),
+                 anchor: .trailing)
+
+        guard points.count >= 2 else {
+            ctx.draw(Text("数据还不够，等十几秒再看")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(Theme.dim.opacity(0.7)),
+                     at: CGPoint(x: (x0 + x1) / 2, y: (y0 + y1) / 2),
+                     anchor: .center)
+            return
+        }
+
+        let span = Double(max(10, model.chartSeconds))
+        let from = PowerHistory.now - span
+        var ends: [(CGPoint, Int)] = []
+
+        for i in 0..<4 {
+            guard peaks[i] >= 0.5 else { continue }
+            var path = Path()
+            var started = false
+            var last: CGPoint?
+            for pt in points {
+                let w = pt.at(i)
+                if w < 0 {
+                    // 断点：把这一段画完，下一段从新的 move 开始
+                    if started {
+                        ctx.stroke(path, with: .color(Self.lineColors[i]), lineWidth: 1.6)
+                        path = Path()
+                        started = false
+                    }
+                    continue
+                }
+                let fx = x0 + CGFloat((pt.t - from) / span) * (x1 - x0)
+                let x = min(max(fx, x0), x1)
+                let y = y1 - CGFloat(min(w, top) / top) * (y1 - y0)
+                let gp = CGPoint(x: x, y: y)
+                if started {
+                    path.addLine(to: gp)
+                } else {
+                    path.move(to: gp)
+                    started = true
+                }
+                last = gp
+            }
+            if started {
+                ctx.stroke(path, with: .color(Self.lineColors[i]), lineWidth: 1.6)
+            }
+            if let l = last { ends.append((l, i)) }
+        }
+
+        // 线末端标口名：靠右了就写到线左边，两条线挨太近就往下错开一行
+        ends.sort { $0.0.y < $1.0.y }
+        var prevY: CGFloat = -.infinity
+        for (p, i) in ends {
+            var ly = p.y - 16
+            if ly < y0 { ly = y0 }
+            if prevY > -.infinity && ly < prevY + 13 { ly = prevY + 13 }
+            if ly + 14 > y1 { ly = y1 - 14 }
+            prevY = ly
+            let name = portName(i)
+            let labelW: CGFloat = name.count >= 4 ? 34 : 20
+            var lx = p.x + 5
+            if lx + labelW > x1 { lx = p.x - 5 - labelW }
+            if lx < x0 { lx = x0 }
+            // 标签垫一层半透明底：线正好从字下面穿过时也读得清
+            let rect = CGRect(x: lx - 3, y: ly - 1, width: labelW + 6, height: 15)
+            ctx.fill(Path(roundedRect: rect, cornerRadius: 4),
+                     with: .color(Color(red: 0.086, green: 0.102, blue: 0.125).opacity(0.82)))
+            ctx.draw(Text(name)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(Self.lineColors[i]),
+                     at: CGPoint(x: lx, y: ly),
+                     anchor: .topLeading)
         }
     }
 }
@@ -622,6 +1020,66 @@ final class PanelController: NSObject, NSPopoverDelegate {
         pop.contentViewController = vc
         pop.delegate = self
         return pop
+    }
+}
+
+// MARK: - 文档 / CI 截图用的面板演示
+
+/// --panel-demo 用的假数据：一台已经连上的酷态科 10 号 Ultra。
+/// C1 在带载；solo 时只有 C3 在输出，否则 C3+A 合并成一路。
+/// 全是构造出来的数，不碰蓝牙、不联网、不落盘。
+enum PanelDemoData {
+    static func snapshot(soloC3: Bool) -> DeviceSnapshot {
+        var s = DeviceSnapshot()
+        s.connected = true
+        s.status = "已连接"
+        s.firmware = "2.1.2_0073"
+        s.portSwitch = 0x0f
+        s.sceneMode = 3
+        s.ports[0].apply(PortData(state: 0x01, code: 2, current: 2.00, voltage: 20.10))
+        s.ports[1].apply(PortData(state: 0x00, code: 0, current: 0, voltage: 0))
+        if soloC3 {
+            s.ports[2].apply(PortData(state: 0x01, code: 2, current: 0.45, voltage: 20.00))
+        } else {
+            // 0x11 = 固件把 C3 与 A 的功率并成一路报
+            s.ports[2].apply(PortData(state: 0x11, code: 2, current: 0.45, voltage: 20.00))
+        }
+        s.ports[3].apply(PortData(state: 0x00, code: 0, current: 0, voltage: 0))
+        return s
+    }
+}
+
+/// 把某个页签摆进一个普通窗口（不是 NSPopover）：popover 得挂在状态栏按钮上，
+/// CI 的截图脚本拿不到那个按钮，普通窗口反而更稳。
+final class PanelDemoController {
+    static let shared = PanelDemoController()
+    private var window: NSWindow?
+
+    func show(page: PanelTab, soloC3: Bool) {
+        let model = PanelModel()
+        model.snapshot = PanelDemoData.snapshot(soloC3: soloC3)
+        model.tab = page
+        // 曲线页给足 5 分钟历史，跟真机默认档一致。
+        model.chartSeconds = page == .chart ? 300 : 60
+        model.seedHistory(PowerHistory.demo(c3Only: soloC3))
+
+        let host = NSHostingView(rootView: PanelView(model: model))
+        host.frame = NSRect(x: 0, y: 0, width: 340, height: 424)
+
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 424),
+                         styleMask: [.borderless],
+                         backing: .buffered,
+                         defer: false)
+        w.isOpaque = true
+        w.backgroundColor = NSColor(calibratedRed: 0.106, green: 0.118, blue: 0.137, alpha: 1)
+        w.level = .floating
+        w.contentView = host
+        // 离开屏幕边缘一点，免得截图时被顶出可视区。
+        w.setFrameOrigin(NSPoint(x: 240, y: 260))
+        w.makeKeyAndOrderFront(nil)
+        // 菜单栏 app 默认没被激活，不激活的话窗口在后台，screencapture 抓不到。
+        NSApp.activate(ignoringOtherApps: true)
+        window = w
     }
 }
 #endif

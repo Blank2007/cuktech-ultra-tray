@@ -152,6 +152,7 @@ final class TrayController: NSObject {
             updateTitle()
             refreshMenuStatus()
         }
+        panel.model.record(snap)
         panel.model.snapshot = snap
         SettingsController.shared.setConnected(snap.connected)
     }
@@ -579,6 +580,19 @@ final class TrayController: NSObject {
         panel.model.onSetPort = { [weak self] index, on in self?.setPort(index, on) }
         panel.model.onSetScene = { [weak self] mode in self?.setScene(mode) }
         panel.model.pollInterval = settings.pollInterval
+        panel.model.chartSeconds = settings.chartSeconds
+
+        // 曲线页右上角那个时长胶囊：点一下就换一档，跟 Windows 一样四档循环。
+        panel.model.onChartSecondsChanged = { [weak self] sec in
+            guard let self else { return }
+            self.settings.chartSeconds = sec
+            do {
+                try self.settings.save()
+            } catch {
+                self.log.write("[panel] 保存曲线时长失败：\(error)")
+            }
+            self.log.write("[panel] 曲线时长 -> \(sec)s")
+        }
 
         // 面板底部「关于」：先把面板收起来，否则 transient popover 会被新窗口顶掉，
         // 看起来像闪了一下又没了。
