@@ -4,6 +4,44 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.5 — 2026-11-27
+
+On the Windows side this version only touches one sentence — **the privacy notice now matches what the
+program actually does**; the real new work is on macOS (0.1.8: CSV export, update check on launch).
+
+- **One self-contradiction removed**: since 0.5.4 the app quietly checks for updates eight seconds after
+  launch, but the privacy notice you must accept on first launch still said "only when you press
+  「检查更新」 does it reach GitHub". That stopped being true in 0.5.4, and that text is what the user agreed to.
+  Section three now reads "启动时会在后台查一次更新（默认开，右键菜单里能关），只拉公开的发布列表"
+  (`src/CuktechTrayAot/ConsentWindow.cs`, and the wizard's 「隐私说明」 message box in `WizardWindow.cs`)
+- macOS 0.1.8 ships alongside this one: capture CSV export and the update check on launch (see the entry below)
+- Version 0.5.4 → **0.5.5**
+
+## macOS 0.1.8 — 2026-11-27
+
+This brings the two things from Windows 0.5.4 over to the Mac: **CSV export for single-port
+capture**, and **an update check that runs by itself on startup and puts a red dot in the menu bar**.
+
+- **Capture results export to CSV** (`mac/Sources/CuktechCore/Capture.swift`, `mac/Sources/CuktechTray/CaptureResultWindow.swift`)
+  - Every second of capture records voltage / current / watts / loaded into a `CaptureSample`
+    (7200 entries ≈ 2 hours); idle samples are recorded too, so gaps stay gaps
+  - The result window gains an "导出 CSV" button that opens an `NSSavePanel`; the default name is
+    `cuktech-capture-<port>-<yyyyMMdd-HHmmss>.csv`, the same rule as on Windows
+  - Written as UTF-8 **with BOM** (without it Excel mangles the Chinese header), formatted with
+    `en_US_POSIX` — on a French or German system the comma decimal separator would shift every column
+  - Capture itself still writes nothing; a file only appears after pressing "export CSV"
+- **Update check runs on startup** (`mac/Sources/CuktechTray/TrayController.swift`, `AppSettings.swift`)
+  - On by default (`checkUpdatesOnStart`), **8 seconds after launch** — Bluetooth gets to connect first
+  - New version found: a small red dot after the wattage in the menu bar, and the context-menu row becomes
+    "检查更新…（有 X）" with a leading red dot; the automatic check **never opens a dialog**
+  - Pressing "检查更新…" yourself shows "new version X / go download / later", or "already the latest"
+  - No dot in icon mode: that image is a template and any colour you add gets tinted by the system
+  - When nothing is paired yet, the check puts back "还没配对，右键「重新配对…」走一遍向导" instead of
+    claiming a connection
+- New tests `testCsvExport` / `testSampleCap` (`mac/Tests/CuktechCoreTests/CaptureTests.swift`):
+  exact header, CRLF, decimal places, idle row ending in 0, 7200-entry cap
+- Version 0.1.7 → **0.1.8**
+
 ## 0.5.4 — 2026-11-27
 
 This one rounds the panel out into a full set: **a chart tab for the power history**, **CSV export for
