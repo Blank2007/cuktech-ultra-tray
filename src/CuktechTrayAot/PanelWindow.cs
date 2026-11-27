@@ -315,9 +315,6 @@ internal sealed class PanelWindow : WinBase
         Color.FromArgb(167, 139, 250),
     };
 
-    /// <summary>图例文字。第三路固定写 C3+A：合并时它就是一条线，分开时也只是这一路的曲线。</summary>
-    private static readonly string[] LineNames = { "C1", "C2", "C3+A", "A" };
-
     /// <summary>点时长胶囊循环的四档（秒）。</summary>
     internal static readonly int[] SpanChoices = { 60, 300, 900, 1800 };
 
@@ -369,7 +366,24 @@ internal sealed class PanelWindow : WinBase
         float pad = 16 * s;
         int span = ChartSpan;
 
-        Text(g, "每路一条线，点右边换时长", _fFoot, Dim, pad, 100 * s, 176 * s, 18 * s);
+        var pts = PowerHistory.Snapshot(span);
+        double max = 0;
+        // 每一路自己在窗口里的峰值：整条都是 0 的那一路不画线（插着但没输出，画出来就是贴在 0 轴上的一条横线，
+        // 看着像坐标轴重了一条，其实一点信息都没有 —— 用户就是这么反馈的第一眼印象）
+        var peakEach = new double[4];
+        foreach (var p0 in pts)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                double w = p0.At(i);
+                if (w > max) max = w;
+                if (w > peakEach[i]) peakEach[i] = w;
+            }
+        }
+        double top = NiceMax(max);
+
+        // 0.5.7：副标题直接点名「现在哪几路在输出」。只有 C3 输出时，不用再去底下图例里对颜色
+        Text(g, ChartSubtitle(peakEach), _fFoot, Dim, pad, 100 * s, 196 * s, 18 * s);
         var spanRect = ChartSpanRect;
         using (var path = RoundRect(spanRect, 10 * s))
         {
@@ -380,22 +394,6 @@ internal sealed class PanelWindow : WinBase
         Text(g, SpanLabel(span), _fFoot, Fg, spanRect.X, spanRect.Y, spanRect.Width, spanRect.Height, TextAnchor.Center);
 
         int x0 = S(16 + ChartAxisW), x1 = S(DesignW - 16), y0 = S(ChartTop), y1 = S(ChartBottom);
-        var pts = PowerHistory.Snapshot(span);
-
-        double max = 0;
-        // 每一路自己在窗口里的峰值：整条都是 0 的那一路不画线（插着但没输出，画出来就是贴在 0 轴上的一条横线，
-        // 看着像坐标轴重了一条，其实一点信息都没有 —— 用户就是这么反馈的第一眼印象）
-        var peakEach = new double[4];
-        foreach (var p in pts)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                double w = p.At(i);
-                if (w > max) max = w;
-                if (w > peakEach[i]) peakEach[i] = w;
-            }
-        }
-        double top = NiceMax(max);
 
         for (int k = 0; k <= 2; k++)
         {
@@ -407,6 +405,9 @@ internal sealed class PanelWindow : WinBase
                 Text(g, ((int)Math.Round(v)) + "W", _fFoot, Faint, pad, y - S(9), S(ChartAxisW - 4), S(16), TextAnchor.Right);
         }
         Text(g, "0W", _fFoot, Faint, pad, y1 - S(9), S(ChartAxisW - 4), S(16), TextAnchor.Right);
+
+        // 每条线的末端位置，画完线统一在末端标口名（标在线里面会被后画的线压住）
+        var endPts = new List<(PointF P, int I)>();
 
         if (pts.Count < 2)
         {
@@ -429,38 +430,69 @@ internal sealed class PanelWindow : WinBase
                             g.FillEllipse(b, seg[0].X - 1.5f * s, seg[0].Y - 1.5f * s, 3 * s, 3 * s);
                     seg.Clear();
                 }
-                foreach (var p in pts)
+                bool hasLast = false;
+                PointF last = default;
+                foreach (var p0 in pts)
                 {
-                    double w = p.At(i);
+                    double w = p0.At(i);
                     if (w < 0) { Flush(); continue; }
-                    float x = x0 + (float)((p.T - from) / span * (x1 - x0));
+                    float x = x0 + (float)((p0.T - from) / span * (x1 - x0));
                     if (x < x0) x = x0;
                     if (x > x1) x = x1;
                     float y = y1 - (float)(Math.Min(w, top) / top * (y1 - y0));
-                    seg.Add(new PointF(x, y));
+                    last = new PointF(x, y);
+                    hasLast = true;
+                    seg.Add(last);
                 }
                 Flush();
+                if (hasLast) endPts.Add((last, i));
+            }
+
+            // 线末端标口名：一眼看出这条线是哪一路，不用回图例对颜色。靠右了就写到线的左边，
+            // 两条线末端挨太近就往下错开一行（免得叠成一坨）
+            float labelW = 34 * s;
+            endPts.Sort((a, b) => a.P.Y.CompareTo(b.P.Y));
+            float prevY = float.MinValue;
+            foreach (var (lp, li) in endPts)
+            {
+                float ly = lp.Y - S(18);
+                if (ly < y0) ly = y0;
+                if (prevY > float.MinValue && ly < prevY + S(13)) ly = prevY + S(13);
+                if (ly + S(16) > y1) ly = y1 - S(16);
+                prevY = ly;
+                float lx = lp.X + S(5);
+                if (lx + labelW > x1) lx = lp.X - S(5) - labelW;
+                if (lx < x0) lx = x0;
+                // 标签垫一层半透明底：线正好从字下面穿过时也读得清
+                string label = NameOf(li);
+                float tw = MeasureText(g, label, _fFoot);
+                using (var bgPath = RoundRect(new RectangleF(lx - S(3), ly - S(1), tw + S(6), S(17)), 4 * s))
+                {
+                    using var bgBrush = new SolidBrush(Color.FromArgb(205, 22, 26, 32));
+                    g.FillPath(bgBrush, bgPath);
+                }
+                Text(g, label, _fFoot, LineColors[li], lx, ly, labelW, S(16), TextAnchor.Left);
             }
         }
 
         // 图例：四个小方块 + 名字，一行排开
-        float lx = pad;
+        float lx0 = pad;
         for (int i = 0; i < 4; i++)
         {
-            var box = new Rectangle((int)lx, (int)(336 * s + 3 * s), S(10), S(10));
+            var box = new Rectangle((int)lx0, (int)(336 * s + 3 * s), S(10), S(10));
             bool live = peakEach[i] >= 0.5;
             FillRound(g, box, 2 * s, live ? LineColors[i] : Faint);
-            Text(g, LineNames[i], _fFoot, live ? Dim : Faint, lx + 14 * s, 334 * s, 52 * s, 16 * s);
-            lx += 62 * s;
+            Text(g, NameOf(i), _fFoot, live ? Dim : Faint, lx0 + 14 * s, 334 * s, 52 * s, 16 * s);
+            lx0 += 62 * s;
         }
 
         if (pts.Count >= 2)
         {
             double peak = 0, sum = 0;
             int n = 0;
-            foreach (var p in pts)
+            foreach (var p0 in pts)
             {
-                double w = Math.Max(0, p.At(0)) + Math.Max(0, p.At(1)) + Math.Max(0, p.At(2)) + Math.Max(0, p.At(3));
+                double w = Math.Max(0, p0.At(0)) + Math.Max(0, p0.At(1)) + Math.Max(0, p0.At(2)) + Math.Max(0, p0.At(3));
                 if (w > peak) peak = w;
                 sum += w;
                 n++;
@@ -470,6 +502,23 @@ internal sealed class PanelWindow : WinBase
         }
     }
 
+    /// <summary>图例与线末标签里的口名：C3 与 A 合并时第三路写 C3+A，分开时就是 C3。</summary>
+    private string NameOf(int i) => i switch
+    {
+        0 => "C1",
+        1 => "C2",
+        2 => _snap.C3AMerged ? "C3+A" : "C3",
+        _ => "A",
+    };
+
+    /// <summary>曲线页副标题：有哪几路在输出就点名，一路都没有就退回原来那句说明。</summary>
+    private string ChartSubtitle(double[] peakEach)
+    {
+        var live = new List<string>();
+        for (int i = 0; i < 4; i++)
+            if (peakEach[i] >= 0.5) live.Add(NameOf(i));
+        return live.Count == 0 ? "每路一条线，点右边换时长" : "在输出：" + string.Join("、", live);
+    }
     private void DrawModeCard(Graphics g, Rectangle r, int index)
     {
         float s = Scale;

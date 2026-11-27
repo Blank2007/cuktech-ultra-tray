@@ -155,7 +155,9 @@ internal static class Program
             if (Has(args, "--render-pinned")) probe.RestorePinned(true);
             string sizeTag = renderScale > 0f ? "-x" + renderScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", "") : "";
             // 曲线页要有点才画得出来：演示模式塞 180 个假点（不写盘，只活在内存里）
-            if (demo) PowerHistory.SeedDemo();
+            // --render-solo-c3：只有 C3 带载的情形
+            bool soloC3 = demo && Has(args, "--render-solo-c3");
+            if (demo) PowerHistory.SeedDemo(soloC3);
             foreach (var (tab, name) in new[]
             {
                 (PanelWindow.Tab.Read, "read"),
@@ -166,7 +168,7 @@ internal static class Program
             {
                 probe.SetTab(tab);
                 if (demo) probe.SetDemoSnapshot(DemoSnapshot(tab, mergedDemo));
-                probe.SaveRender(OutFile(args, "tmp-" + (mergedDemo ? "demo-merged-" : demo ? "demo-" : "aot-") + name + sizeTag + ".png"));
+                probe.SaveRender(OutFile(args, "tmp-" + (mergedDemo ? "demo-merged-" : soloC3 ? "demo-solo-c3-" : demo ? "demo-" : "aot-") + name + sizeTag + ".png"));
             }
             LogSink.Write("[probe] rendered" + (demo ? " demo" : ""));
             return 0;

@@ -4,6 +4,23 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.7 — 2026-11-28
+
+The chart tab now answers "C3 is the only port delivering — how do I see that on the curve".
+
+- **The subtitle names the ports that are delivering**: "delivering: C3", or "delivering: C1, C3" for several;
+  the old "one line per port, tap the pill to change the span" only shows when nothing is delivering
+  (`PanelWindow.ChartSubtitle`)
+- **Each line is labelled with its port name at its end**: C1 / C2 / C3 (C3+A when merged) / A in the line
+  colour, stacked at least 13 dip apart, moved to the left of the point near the right edge, on a translucent
+  backing so the line crossing underneath does not swallow the text (`NameOf(int)` replaces the hard-coded
+  `LineNames`)
+- The third name follows the merge state: **C3+A** when C3 and A are folded together, plain **C3** otherwise
+- The render self-test gained `--render-solo-c3` (`PowerHistory.SeedDemo(bool c3Only)`) to produce the
+  "only C3 is delivering" screenshot
+
+![Chart tab with only C3 delivering](docs/shot-chart-solo.png)
+
 ## 0.5.6 — 2026-11-27
 
 Two things only: **the context menu went back to being a real Windows menu** (the self-drawn one had

@@ -95,8 +95,11 @@ internal static class PowerHistory
         return list;
     }
 
-    /// <summary>--render-chart 用：造一段固定形状的假数据（同一条曲线每次渲染都一样，基线才能比）。</summary>
-    public static void SeedDemo()
+    /// <summary>
+    /// --render-demo 用：造一段固定形状的假数据（同一条曲线每次渲染都一样，基线才能比）。
+    /// c3Only = true 时只有 C3 带载、另外三路插着但 0 瓦，用来看「单口输出」时曲线页认不认得出来。
+    /// </summary>
+    public static void SeedDemo(bool c3Only = false)
     {
         lock (Gate)
         {
@@ -106,6 +109,12 @@ internal static class PowerHistory
             for (int i = 180; i >= 0; i--)
             {
                 double phase = (180 - i) / 180.0;
+                if (c3Only)
+                {
+                    double solo = 9 + 5 * Math.Sin(phase * 9.0) + rnd.NextDouble() * 0.6;
+                    Pts.Add(new PowerPoint(now - i, 0, 0, Math.Round(Math.Max(0.6, solo), 1), 0));
+                    continue;
+                }
                 double baseW = 42 + 28 * Math.Sin(phase * Math.PI * 2.1);
                 double w0 = Math.Max(0, Math.Round(baseW + rnd.NextDouble() * 4 - 2, 1));
                 double w2 = phase > 0.35 && phase < 0.82 ? Math.Round(16 + 7 * Math.Sin(phase * 11), 1) : 0;
@@ -113,5 +122,4 @@ internal static class PowerHistory
             }
             _lastT = now;
         }
-    }
-}
+    }}

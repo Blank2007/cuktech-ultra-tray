@@ -199,7 +199,11 @@ The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene
 
 The panel's fourth tab answers "what did the last few minutes look like":
 
-* One line per port, in the same colours as the bars on the Read tab: **C1 blue / C2 green / C3+A amber / A violet**
+* One line per port, in the same colours as the bars on the Read tab: **C1 blue / C2 green / C3 amber (C3+A when merged) / A violet**
+* **Which port is actually delivering is obvious at a glance**: the subtitle names them ("delivering: C3"), the
+  ports that never showed up are dimmed in the legend, and each line is labelled with its port name right at
+  its end — with a single port you never have to match a colour back to the legend
+  ![Chart tab with only C3 delivering](docs/shot-chart-solo.png)
 * The pill in the top right cycles the span: **1 minute → 5 → 15 → 30 → back to 1**; also under the right-click
   menu entry "Chart span", stored as `ChartSeconds` in `settings.json`
 * The vertical axis picks a round top in 20 W steps (a 65 W laptop does not flatten the phone's line onto the
