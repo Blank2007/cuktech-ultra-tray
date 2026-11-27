@@ -3,6 +3,47 @@
 这个项目最早只在我自己的一台电脑上跑，后来放到了 GitHub 上，所以下面是按「做过什么」整理的，
 版本号一路加到这里，方便对上安装包里的文件版本。
 
+## 0.5.4 — 2026-11-27
+
+这一版是「把面板补成一整套」：**多了一个画功率曲线的页签**、**单口采集能导出 CSV**、
+**更新检查会自己在启动时查一遍并在托盘图标上点个红点**，还有 [issue #7](https://github.com/Blank2007/cuktech-ultra-tray/issues/7)
+那位说的「任务栏数字挪不到右边」——现在位置上直接给你四档可选。
+
+- **面板第四个页签：曲线**（`src/CuktechTrayAot/PanelWindow.cs`、新文件 `src/CuktechTrayAot/PowerHistory.cs`）
+  - 四路各一条线（C1 蓝 / C2 绿 / C3+A 橙 / A 紫），横轴是时间、纵轴按 20W 一档自动取顶（`NiceMax`）
+  - 时长四档：点右上角胶囊在 **1 / 5 / 15 / 30 分钟**之间循环；右键菜单「功率曲线时长」里也能选，
+    数字写进 `settings.json` 的 `ChartSeconds`
+  - **只活在内存里**：1 Hz × 30 分钟 = 1800 点封顶（`PowerHistory.Capacity`，约 72 KB），到顶丢最老的。
+    不写盘 —— 这块就是「看一眼刚才的走势」，真要留数据请用单口采集那条路
+  - 拔线 / 没插 / C3+A 合并时被并进去的那一路，瓦数记 **-1**，曲线在那儿**断开**而不是连一条直线过去；
+    整段都没有输出的那一路干脆不画（只把图例压暗），免得在 0 轴上多出一条像坐标轴的横线
+  - 两拍之间太近（< 0.4 秒）不记：设备推送偶尔连着来两次，记下来只是让曲线多几个重复点
+- **单口采集能导出 CSV**（`src/CuktechTray/Capture.cs`、`src/CuktechTrayAot/CaptureWindow.cs`）
+  - 采集时顺带把**每一秒**的电压 / 电流 / 功率 / 是否带载记进 `List<CaptureSample>`（上限 7200 条 ≈ 2 小时）
+  - 窗口按钮改成两排：上排「开始采集 / 停止」+「关闭」，下排「复制摘要」+「**导出 CSV**」（窗口从 482 高变 534）
+  - 落到 `文档\CuktechTray\cuktech-capture-<口名>-<yyyyMMdd-HHmmss>.csv`，UTF-8 **带 BOM**（不加 Excel 会把中文表头显示成乱码），
+    数字一律 `InvariantCulture`（换个区域设置小数点是逗号的话，整张表就错列了）
+  - 采集本身仍然**不落盘**，写文件只发生在用户自己点「导出 CSV」的时候
+- **启动时自己查一遍更新**（`src/CuktechTrayAot/TrayApp.cs`）
+  - 默认**每次启动 8 秒后**查一次（先让蓝牙连上，不跟握手抢网络）：`CheckUpdatesOnStart`，菜单里能关
+  - 查到新版：托盘图标右上角点一颗**红角标**（`WattIcon.DrawBadge`），右键菜单里那一项变成
+    「检查更新…（有 0.5.5）」并带一个**小红点**（`MenuEntry.DotItem` / `MenuWindow.DrawDot`），再冒一个气泡说完事
+  - 自动查的时候**不拿弹框拦人**：只有手动点「检查更新…」才会弹「已经是最新版」/决定要不要现在替换；
+    已经是最新就悄悄把红角标收掉
+- **任务栏数字挪不到右边（[issue #7](https://github.com/Blank2007/cuktech-ultra-tray/issues/7)）**（`src/CuktechTrayAot/TaskbarWindow.cs`）
+  - 位置改成直接选：**自动**（开始按钮左边）/ **居中** / **靠右**（托盘左边）/ **自定义左边距**，写进 `TaskbarPlace` + `TaskbarLeftDip`
+  - 大小四档：小 / 中 / 大 / 自定义宽度（`TaskbarWidthDip`，56..160 dip），**字号跟着宽度走**（11 × 宽 / 84），拉宽不会把字切掉
+  - 真正的根因：以前挂上任务栏之后**只调过一次不带 z 序的 SetWindowPos**，之后再也不动，所以一拖到托盘区就被
+    `TrayNotifyWnd` 整块盖住 —— 看着就是「挪不过去」。现在每次重排都把它提到兄弟窗口最前
+  - `WM_CAPTURECHANGED` 里收尾：拖动中句柄被抢走不再卡在「正在拖动」
+  - 自定义数值用新窗口 `src/CuktechTrayAot/NumberWindow.cs` 收（只吃整数、带上下限提示）
+- **没配对就不再起蓝牙循环**：`settings.json` 里 Mac 还是空的时候，以前 `DeviceClient` 每轮都会抛
+  `MAC 格式应为 AA:BB:CC:DD:EE:FF` 刷一屏日志、还白占着适配器；现在等向导配对完成才第一次启动（`TrayApp._clientStarted`）
+- **两处自查入口**（`src/CuktechTrayAot/Program.cs`）：`--probe-capture-csv` 把演示数据的逐秒样本写成 CSV 核表头与列数；
+  `--render ... --render-demo` 现在会连曲线页一起出图（`tmp-demo-chart-*.png`）
+- `tools/check-ui.ps1` 的基线重录了一遍（多了曲线页那两张图，采集窗口也因为按钮改两排从 360×482 变 360×534）
+- 版本 0.5.3 → **0.5.4**
+
 ## 0.5.3 — 2026-11-26
 
 这一版修的是「设备设置」窗口里一处**点击错位**，顺手把这类错位的根子拔掉。

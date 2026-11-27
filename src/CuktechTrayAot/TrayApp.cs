@@ -37,6 +37,10 @@ internal sealed class TrayApp : WinBase
     private DateTime _statusOverrideUntil = DateTime.MinValue;
 
     private long _controlAt = -1;
+    private long _updateAt = -1;
+    private string _newVersion = string.Empty;
+    private bool _checking;
+    private bool _clientStarted;
     private long _releaseAt = -1;
     private long _saveAt = -1;
     private bool _releasePending;
@@ -91,13 +95,23 @@ internal sealed class TrayApp : WinBase
             _wizardAt = Environment.TickCount64 + 800;
         }
 
-        _client.Start();
+        // 没配对就不起蓝牙循环：settings 里 Mac 是空的，DeviceClient 每轮都会抛
+        // 「MAC 格式应为 AA:BB:CC:DD:EE:FF」刷一屏日志，还白占着适配器。
+        // 配对完成时 OnWizardCompleted 会把循环起起来（见那边 _clientStarted 的判断）。
+        if (settings.IsComplete)
+        {
+            _client.Start();
+            _clientStarted = true;
+        }
 
         // 锁屏 / 解锁：把「谁在最上面」这件事重新摆正一次
         Native.WTSRegisterSessionNotification(Hwnd, 0 /* NOTIFY_FOR_THIS_SESSION */);
 
         // --control：启动后直接把面板翻到控制页
         if (openControl) _controlAt = Environment.TickCount64 + 500;
+
+        // 默认每次启动查一遍新版。等 8 秒再查：先让蓝牙连上，别跟握手抢网络和 CPU
+        if (settings.CheckUpdatesOnStart) _updateAt = Environment.TickCount64 + 8000;
 
         // 启动后是否主动弹一下面板
         if (showOnStart != ShowOnStart.None) _showAt = Environment.TickCount64 + 700;
@@ -177,6 +191,12 @@ internal sealed class TrayApp : WinBase
             {
                 _wizardAt = -1;
                 ShowWizard();
+            }
+
+            if (_updateAt >= 0 && now >= _updateAt)
+            {
+                _updateAt = -1;
+                RunUpdateCheck(false);
             }
 
             if (_releasePending && _releaseAt >= 0 && now >= _releaseAt)
@@ -262,6 +282,7 @@ internal sealed class TrayApp : WinBase
     private void OnSnapshot(Snapshot snap)
     {
         _snap = snap ?? new Snapshot();
+        PowerHistory.Add(_snap);   // 曲线页的数据只活在内存里，每分钟约 1800 点封顶
         _widget?.Apply(_snap);
         UpdateTray(_snap);
     }
@@ -286,12 +307,13 @@ internal sealed class TrayApp : WinBase
         // 图标只表达「连上了没有」：实时功率看任务栏那块数字，不必再挤进 16px 的图标里
         Color color = snap.Connected ? ColorOn : ColorOff;
 
-        string key = snap.Connected ? "on" : "off";
+        bool badge = _newVersion.Length > 0;
+        string key = (snap.Connected ? "on" : "off") + (badge ? "+new" : "");
         bool iconChanged = key != _iconKey;
         if (iconChanged)
         {
             _iconKey = key;
-            var next = WattIcon.Create(color);
+            var next = WattIcon.Create(color, badge);
             var previous = _icon;
             _icon = next;
             // 系统需要短暂保留旧句柄，延后释放
@@ -420,6 +442,21 @@ internal sealed class TrayApp : WinBase
         });
     }
 
+    /// <summary>--menu-demo-taskbar：只摊出「任务栏数字」这一层子菜单，给截图与人工核对用。</summary>
+    public void DemoMenuTaskbar()
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1200);
+            _ui.Post(_ =>
+            {
+                SetStatus("已连接 · 总 6.0 W", 600);
+                MenuWindow.Show(TaskbarItems(), 200, 140);
+                LogSink.Write("[menu] taskbar demo shown");
+            }, null);
+        });
+    }
+
     private void ShowTrayMenu()
     {
         if (!Native.GetCursorPos(out var pt)) return;
@@ -442,10 +479,6 @@ internal sealed class TrayApp : WinBase
             });
         }
 
-        string posText = _settings.TaskbarLeftDip >= 0
-            ? "重置任务栏数字位置（现在是拖动后的位置）"
-            : "重置任务栏数字位置（现在是自动）";
-
         return new[]
         {
             MenuEntry.BoldItem("显示功率面板", () => ShowPanel(true)),
@@ -455,8 +488,8 @@ internal sealed class TrayApp : WinBase
             MenuEntry.WithSub("充电模式", modeItems.ToArray()),
             MenuEntry.CheckItem("固定面板到桌面", _panel.Pinned, () => _panel.TogglePin()),
             MenuEntry.CheckItem("面板始终在最前", _panel.AlwaysOnTop, ToggleAlwaysOnTop),
-            MenuEntry.CheckItem("在任务栏显示功率", _widget is not null, ToggleTaskbarWidget),
-            new MenuEntry { Text = posText, Enabled = _widget is not null, Click = ResetTaskbarPosition },
+            MenuEntry.WithSub("任务栏数字", TaskbarItems()),
+            MenuEntry.WithSub("功率曲线时长", ChartItems()),
             MenuEntry.Item("重置面板位置（收回右下角）", ResetPanelPosition),
             MenuEntry.Dim(StatusLine()),
             MenuEntry.Sep(),
@@ -466,7 +499,9 @@ internal sealed class TrayApp : WinBase
                 ? MenuEntry.Item("从这台电脑卸载…", UninstallFromMachine)
                 : MenuEntry.Item("安装到本机…", InstallToMachine),
             MenuEntry.Item("重新配置设备…", ReconfigureDevice),
-            MenuEntry.Item("检查更新…", CheckUpdates),
+            _newVersion.Length > 0
+                ? MenuEntry.DotItem("检查更新…（有 " + _newVersion + "）", CheckUpdates)
+                : MenuEntry.Item("检查更新…", CheckUpdates),
             MenuEntry.Item("关于…", ShowAbout),
             MenuEntry.Item("打开日志", OpenLog),
             MenuEntry.Item("设置文件", OpenSettings),
@@ -517,18 +552,168 @@ internal sealed class TrayApp : WinBase
         LogSink.Write("[taskbar] enabled=" + (_widget is not null));
     }
 
+    /// <summary>
+    /// 任务栏数字那一摊的菜单（0.5.4，issue #7）：开关、四档位置、四档大小、两处自定义、状态行、重置。
+    /// MenuWindow 只支持一层子菜单，所以这里全部压平成一行一行的单选。
+    /// </summary>
+    private MenuEntry[] TaskbarItems()
+    {
+        bool on = _widget is not null;
+        var place = _widget?.Place ?? TaskbarWindow.ParsePlace(_settings.TaskbarPlace);
+        int wdip = TaskbarWindow.ClampWidth(_settings.TaskbarWidthDip);
+
+        string now = _widget is not null ? _widget.Describe() : "现在：任务栏数字没开";
+
+        return new[]
+        {
+            MenuEntry.CheckItem("显示在任务栏（总功率）", on, ToggleTaskbarWidget),
+            MenuEntry.Sep(),
+            MenuEntry.RadioItem("贴在开始菜单左边（自动）", place == TaskbarPlace.Auto, () => SetTaskbarPlace(TaskbarPlace.Auto)),
+            MenuEntry.RadioItem("屏幕正中", place == TaskbarPlace.Center, () => SetTaskbarPlace(TaskbarPlace.Center)),
+            MenuEntry.RadioItem("靠托盘左边", place == TaskbarPlace.Right, () => SetTaskbarPlace(TaskbarPlace.Right)),
+            MenuEntry.RadioItem(place == TaskbarPlace.Custom
+                    ? "自定义左边距…（现在是 " + (int)Math.Round(_settings.TaskbarLeftDip) + "）"
+                    : "自定义左边距…",
+                place == TaskbarPlace.Custom, AskTaskbarLeft),
+            MenuEntry.Sep(),
+            MenuEntry.RadioItem("小（9.5 号 · 宽 72）", wdip == 72, () => SetTaskbarWidth(72)),
+            MenuEntry.RadioItem("中（11 号 · 宽 84）", wdip == 84, () => SetTaskbarWidth(84)),
+            MenuEntry.RadioItem("大（13 号 · 宽 104）", wdip == 104, () => SetTaskbarWidth(104)),
+            MenuEntry.RadioItem(wdip != 72 && wdip != 84 && wdip != 104
+                    ? "自定义宽度…（现在是 " + wdip + "）"
+                    : "自定义宽度…",
+                wdip != 72 && wdip != 84 && wdip != 104, AskTaskbarWidth),
+            MenuEntry.Sep(),
+            MenuEntry.Dim(now),
+            MenuEntry.Item("重置位置与大小（回自动 + 宽 84）", ResetTaskbarPosition),
+        };
+    }
+
+    /// <summary>
+    /// 曲线页「最近多久」的档位。面板上点那颗胶囊也能换，两边读写的是同一个 settings.ChartSeconds，
+    /// 所以菜单里选了之后回到面板就是新时长。
+    /// </summary>
+    private MenuEntry[] ChartItems()
+    {
+        int cur = _panel.ChartSpan;
+        var items = new List<MenuEntry>();
+        foreach (int sec in PanelWindow.SpanChoices)
+        {
+            int value = sec;
+            items.Add(MenuEntry.RadioItem(PanelWindow.SpanLabel(value), cur == value, () => SetChartSpan(value)));
+        }
+        return items.ToArray();
+    }
+
+    private void SetChartSpan(int sec)
+    {
+        _panel.SetChartSpan(sec);
+        SetStatus("曲线改成" + PanelWindow.SpanLabel(sec));
+    }
+
+    private void SetTaskbarPlace(TaskbarPlace place)
+    {
+        if (_widget is not null) _widget.SetPlace(place);
+        else
+        {
+            _settings.TaskbarPlace = TaskbarWindow.PlaceKey(place);
+            _settings.Save();
+        }
+        SetStatus("任务栏数字位置：" + TaskbarPlaceName(place));
+    }
+
+    private void SetTaskbarWidth(int dip)
+    {
+        if (_widget is not null) _widget.SetWidthDip(dip);
+        else
+        {
+            _settings.TaskbarWidthDip = TaskbarWindow.ClampWidth(dip);
+            _settings.Save();
+        }
+        SetStatus("任务栏数字宽度：" + dip + "（字号约 " + (11.0 * dip / 84).ToString("F1") + " 号）");
+    }
+
+    private static string TaskbarPlaceName(TaskbarPlace place) => place switch
+    {
+        TaskbarPlace.Center => "屏幕正中",
+        TaskbarPlace.Right => "靠托盘左边",
+        TaskbarPlace.Custom => "自定义左边距",
+        _ => "贴开始菜单左边（自动）",
+    };
+
+    /// <summary>「自定义左边距」：弹一个输入窗，填 dip。</summary>
+    private void AskTaskbarLeft()
+    {
+        int min = 0, max = 1200, cur = 0;
+        if (_widget is not null)
+        {
+            var lim = _widget.PlaceLimits();
+            min = lim.Min;
+            max = lim.Max;
+            cur = (int)Math.Round(_settings.TaskbarLeftDip >= 0 ? _settings.TaskbarLeftDip : 0);
+        }
+
+        var v = NumberWindow.Ask(
+            "自定义左边距",
+            "从任务栏最左边算起（拖过就记成这个值）",
+            "dip",
+            min,
+            max,
+            Math.Clamp(cur, min, max),
+            "可以填 " + min + " 到 " + max);
+
+        if (v is null)
+        {
+            SetStatus("没改任务栏数字位置");
+            return;
+        }
+
+        if (_widget is not null) _widget.SetCustomLeft(v.Value);
+        else
+        {
+            _settings.TaskbarLeftDip = v.Value;
+            _settings.TaskbarPlace = TaskbarWindow.PlaceKey(TaskbarPlace.Custom);
+            _settings.Save();
+        }
+        SetStatus("任务栏数字左边距：" + v.Value + " dip");
+    }
+
+    /// <summary>「自定义宽度」：宽度 56..160 dip，字号跟着变。</summary>
+    private void AskTaskbarWidth()
+    {
+        int cur = TaskbarWindow.ClampWidth(_settings.TaskbarWidthDip);
+        var v = NumberWindow.Ask(
+            "自定义宽度",
+            "字号跟着宽度等比变，84 就是 11 号字",
+            "dip",
+            TaskbarWindow.MinWidthDip,
+            TaskbarWindow.MaxWidthDip,
+            cur,
+            "可以填 " + TaskbarWindow.MinWidthDip + " 到 " + TaskbarWindow.MaxWidthDip);
+
+        if (v is null)
+        {
+            SetStatus("没改任务栏数字宽度");
+            return;
+        }
+
+        SetTaskbarWidth(v.Value);
+    }
+
     private void ResetTaskbarPosition()
     {
         if (_widget is null)
         {
             _settings.TaskbarLeftDip = -1;
+            _settings.TaskbarPlace = TaskbarWindow.PlaceKey(TaskbarPlace.Auto);
+            _settings.TaskbarWidthDip = TaskbarWindow.BaseWidthDip;
             _settings.Save();
-            SetStatus("任务栏功率没开，位置已记为自动");
+            SetStatus("任务栏功率没开，位置与大小已重置");
             return;
         }
 
         _widget.ResetPosition();
-        SetStatus("任务栏数字已放回开始按钮左边");
+        SetStatus("任务栏数字已回到开始按钮左边（宽 84）");
     }
 
     /// <summary>
@@ -677,24 +862,43 @@ internal sealed class TrayApp : WinBase
         _statusOverride = string.Empty;
         _statusOverrideUntil = DateTime.MinValue;
         SetStatus("配对好了，正在连…", 20);
-        _client.Restart();
+        if (_clientStarted) _client.Restart();
+        else { _client.Start(); _clientStarted = true; }   // 首次配对：循环这时候才第一次起来
         _tray.ShowBalloon("配对好了", "正在连这台充电器，连上就能看功率了。");
         ShowPanel(true);
     }
 
-    private void CheckUpdates()
+    /// <summary>菜单「检查更新…」：用户主动点的，那就什么都直说。</summary>
+    private void CheckUpdates() => RunUpdateCheck(true);
+
+    /// <param name="manual">
+    /// true = 用户点的菜单，有话直说（弹框、告诉他已经是最新版）；
+    /// false = 启动时自动查的那一遍，安静点：只有真发现新版才点红点 + 冒个气泡，不拿弹框拦人。
+    /// </param>
+    private void RunUpdateCheck(bool manual)
     {
         if (_updating)
         {
-            MessageBox("正在下载新版本，等它下完再说。", Native.MB_OK | Native.MB_ICONINFORMATION);
+            if (manual) MessageBox("正在下载新版本，等它下完再说。", Native.MB_OK | Native.MB_ICONINFORMATION);
             return;
         }
 
-        SetStatus("正在检查更新…", 20);
+        if (_checking)
+        {
+            if (manual) SetStatus("正在检查更新，稍等一下…", 6);
+            return;
+        }
+
+        _checking = true;
+        if (manual) SetStatus("正在检查更新…", 20);
         _ = Task.Run(async () =>
         {
             var res = await UpdateCheck.RunAsync();
-            _ui.Post(_ => AfterUpdateCheck(res), null);
+            _ui.Post(_ =>
+            {
+                _checking = false;
+                AfterUpdateCheck(res, manual);
+            }, null);
         });
     }
 
@@ -702,7 +906,7 @@ internal sealed class TrayApp : WinBase
     /// 查到版本之后：能原地替换就问「下不下」，不能就老实退回打开下载页。
     /// 「不能」的三种情况都在这里提前判掉，免得下完 9 MB 才发现装不进去。
     /// </summary>
-    private void AfterUpdateCheck(UpdateCheck.Result res)
+    private void AfterUpdateCheck(UpdateCheck.Result res, bool manual)
     {
         if (_quitting) return;
         var cur = UpdateCheck.Current;
@@ -710,27 +914,52 @@ internal sealed class TrayApp : WinBase
         if (!res.Ok)
         {
             LogSink.Write("[update] 检查失败: " + res.Error);
-            MessageBox("这次没检查成：" + res.Error + "\n\n可能是没网，或者 GitHub 一时连不上。稍后再试，也可以自己去这里看：\n" +
-                      UpdateCheck.RepoUrl + "/releases", Native.MB_OK | Native.MB_ICONWARNING);
+            if (manual)
+                MessageBox("这次没检查成：" + res.Error + "\n\n可能是没网，或者 GitHub 一时连不上。稍后再试，也可以自己去这里看：\n" +
+                          UpdateCheck.RepoUrl + "/releases", Native.MB_OK | Native.MB_ICONWARNING);
             return;
         }
 
         if (res.Latest is null)
         {
-            MessageBox("没读出最新版本号，自己去这里看吧：\n" + UpdateCheck.RepoUrl + "/releases",
-                Native.MB_OK | Native.MB_ICONINFORMATION);
+            LogSink.Write("[update] 没读出最新版本号");
+            if (manual)
+                MessageBox("没读出最新版本号，自己去这里看吧：\n" + UpdateCheck.RepoUrl + "/releases",
+                    Native.MB_OK | Native.MB_ICONINFORMATION);
             return;
         }
 
         if (res.Latest <= cur)
         {
-            MessageBox("已经是最新版（" + cur + "）。", Native.MB_OK | Native.MB_ICONINFORMATION);
+            // 之前查到的那个版本已经不新了（或者已经装上去了）：把红点收掉
+            if (_newVersion.Length > 0)
+            {
+                _newVersion = string.Empty;
+                UpdateTray(_snap);
+            }
+            if (manual)
+                MessageBox("已经是最新版（" + cur + "）。", Native.MB_OK | Native.MB_ICONINFORMATION);
             return;
         }
 
         LogSink.Write("[update] 有新版本 " + res.Latest + "（当前 " + cur + "）asset=" + res.AssetName +
                       " size=" + res.AssetSize + " sha=" + res.AssetSha256);
-        SetStatus("有新版本 " + res.Latest, 30);
+        SetStatus("有新版本 " + res.Latest, manual ? 30 : 120);
+
+        string latest = res.Latest.ToString();
+        bool first = _newVersion != latest;
+        _newVersion = latest;
+        UpdateTray(_snap);   // 托盘图标右上角点亮红点，菜单里「检查更新…」也会带上版本号
+
+        if (!manual)
+        {
+            // 启动时自动查到的：不拦人，只冒一个气泡；要不要装交给用户自己点
+            if (first)
+                _tray.ShowBalloon("有新版本 " + res.Latest,
+                    "右键点这个图标 →「检查更新…」就能自动下载替换。不想每次启动都查，可以在设置文件里把 CheckUpdatesOnStart 改成 false。",
+                    Native.NIIF_INFO);
+            return;
+        }
 
         string head = "有新版了：" + res.Latest + "（你现在用的是 " + cur + "）。\n\n";
 

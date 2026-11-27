@@ -5,19 +5,30 @@ using System.Runtime.InteropServices;
 
 namespace CuktechTray;
 
+/// <summary>任务栏数字的摆位方式。0.5.4 起由菜单直接选，不再只能靠拖。</summary>
+internal enum TaskbarPlace { Auto, Center, Right, Custom }
+
 /// <summary>
 /// 任务栏里那一小块功率文字（NativeAOT 版）。
 ///
-/// 和 WinForms 版行为完全一致：窗口是 WS_EX_LAYERED，每帧把一张 32 位 ARGB 位图交给
-/// UpdateLayeredWindow，背景 alpha 全 0 —— 任务栏上只剩一行抗锯齿的数字，没有底色方块，
-/// 也不会留残影。窗口 IsParent 到 Shell_TrayWnd，任务栏移到哪它跟到哪。
-/// 默认摆在开始按钮左边；按住数字可以左右拖，位置记进 settings.json 的 TaskbarLeftDip。
+/// 窗口是 WS_EX_LAYERED，每帧把一张 32 位 ARGB 位图交给 UpdateLayeredWindow，背景 alpha 全 0 ——
+/// 任务栏上只剩一行抗锯齿的数字，没有底色方块，也不会留残影。窗口 IsParent 到 Shell_TrayWnd，
+/// 任务栏移到哪它跟到哪。
+///
+/// 0.5.4（issue #7「无法调到右边显示」）：
+///   1. 位置四档：auto（开始按钮左边）/ center（屏幕正中）/ right（靠托盘左边）/ custom（自定义左边距）；
+///   2. 大小四档：小 / 中 / 大 / 自定义宽度，字号跟着宽度走；
+///   3. 每次重排都把窗口提到兄弟窗口最前 —— 以前挂上去之后再没动过 z 序，
+///      拖到托盘区会被 TrayNotifyWnd 整块盖住，看着就是「挪不过去」；
+///   4. 捕获被抢走时（WM_CAPTURECHANGED）收尾，不再卡在「拖动中」.
 /// </summary>
 internal sealed class TaskbarWindow : WinBase
 {
-    private const int DesignWidthDip = 84;
+    internal const int BaseWidthDip = 84;
+    internal const double BaseFontPt = 11.0;
+    internal const int MinWidthDip = 56;
+    internal const int MaxWidthDip = 160;
     private const int GapDip = 8;
-    private const double FontPt = 11.0;
     private const int TickMs = 500;
     private const int DragThreshold = 4;
     private static readonly UIntPtr TimerId = new(1);
@@ -43,7 +54,8 @@ internal sealed class TaskbarWindow : WinBase
         _settings = settings;
         _onOpen = onOpen;
 
-        CreateWin(105, 60,
+        int w = (int)Math.Round(WidthDip * 1.25);
+        CreateWin(Math.Max(60, w), 60,
             Native.WS_EX_NOACTIVATE | Native.WS_EX_TOOLWINDOW | Native.WS_EX_LAYERED,
             Native.WS_POPUP, IntPtr.Zero, "taskbar");
         if (!IsValid)
@@ -59,21 +71,162 @@ internal sealed class TaskbarWindow : WinBase
         Native.SetTimer(Hwnd, TimerId, TickMs, IntPtr.Zero);
     }
 
+    // ---------------- 配置视图 ----------------
+
+    internal TaskbarPlace Place => ParsePlace(_settings.TaskbarPlace);
+
+    /// <summary>当前宽度（dip），始终落在 56..160 之间。</summary>
+    internal int WidthDip => ClampWidth(_settings.TaskbarWidthDip);
+
+    /// <summary>字号跟着宽度走：宽 84 时 11 号，宽 160 时约 21 号。</summary>
+    internal double FontPt => BaseFontPt * WidthDip / BaseWidthDip;
+
+    internal static TaskbarPlace ParsePlace(string? s) => s?.Trim().ToLowerInvariant() switch
+    {
+        "center" => TaskbarPlace.Center,
+        "right" => TaskbarPlace.Right,
+        "custom" => TaskbarPlace.Custom,
+        _ => TaskbarPlace.Auto,
+    };
+
+    internal static string PlaceKey(TaskbarPlace p) => p switch
+    {
+        TaskbarPlace.Center => "center",
+        TaskbarPlace.Right => "right",
+        TaskbarPlace.Custom => "custom",
+        _ => "auto",
+    };
+
+    internal static int ClampWidth(double dip)
+    {
+        if (double.IsNaN(dip) || dip <= 0) return BaseWidthDip;
+        return (int)Math.Round(Math.Clamp(dip, MinWidthDip, MaxWidthDip));
+    }
+
+    /// <summary>
+    /// 位置算式（纯函数，--probe-taskbar 直接调它自检）。
+    /// 坐标都是「相对任务栏左沿」，-1 表示这个参照物没找到。
+    /// </summary>
+    internal static int PlaceX(TaskbarPlace place, int tbW, int w, int gap,
+                               int startLeft, int startRight, int trayLeft,
+                               double customDip, double scale)
+    {
+        int x = place switch
+        {
+            TaskbarPlace.Center => (tbW - w) / 2,
+            TaskbarPlace.Right => trayLeft >= 0 ? trayLeft - w - gap : tbW - w - gap,
+            TaskbarPlace.Custom => (int)Math.Round(Math.Max(0, customDip) * scale),
+            _ => AutoX(tbW, w, gap, startLeft, startRight),
+        };
+        if (x < 0) x = 0;
+        int hi = Math.Max(0, tbW - w);
+        if (x > hi) x = hi;
+        return x;
+    }
+
+    /// <summary>自动位置：开始按钮左边；左边放不下就它右边；连开始按钮都找不到就贴任务栏最左。</summary>
+    private static int AutoX(int tbW, int w, int gap, int startLeft, int startRight)
+    {
+        int x = gap;
+        if (startLeft >= 0)
+        {
+            int leftOfStart = startLeft - gap - w;
+            x = leftOfStart >= gap ? leftOfStart : Math.Min(Math.Max(0, tbW - w), startRight + gap);
+        }
+        return x;
+    }
+
+    /// <summary>菜单里选了一个位置档。</summary>
+    internal void SetPlace(TaskbarPlace place)
+    {
+        if (place == TaskbarPlace.Custom && _settings.TaskbarLeftDip < 0)
+        {
+            // 第一次切到「自定义」：用当前实际位置当起点，免得数字突然跳到最左
+            int x = CurrentX();
+            _settings.TaskbarLeftDip = Math.Round(_scale > 0 ? x / _scale : x, 2);
+        }
+        _settings.TaskbarPlace = PlaceKey(place);
+        _settings.Save();
+        Reposition(true);
+        LogSink.Write("[taskbar] place=" + _settings.TaskbarPlace + " dip=" + _settings.TaskbarLeftDip.ToString("F2"));
+    }
+
+    /// <summary>用户输入了一个左边距（dip），直接进自定义档。</summary>
+    internal void SetCustomLeft(double dip)
+    {
+        _settings.TaskbarLeftDip = Math.Round(Math.Max(0, dip), 2);
+        _settings.TaskbarPlace = PlaceKey(TaskbarPlace.Custom);
+        _settings.Save();
+        Reposition(true);
+        LogSink.Write("[taskbar] 自定义左边距 dip=" + _settings.TaskbarLeftDip.ToString("F2"));
+    }
+
+    /// <summary>用户输入了一个宽度（dip）。字号会自动跟着变。</summary>
+    internal void SetWidthDip(double dip)
+    {
+        _settings.TaskbarWidthDip = ClampWidth(dip);
+        _settings.Save();
+        _font?.Dispose();
+        _font = null;
+        Reposition(true);
+        LogSink.Write("[taskbar] 宽度 dip=" + _settings.TaskbarWidthDip + " font=" + FontPt.ToString("F1"));
+    }
+
+    /// <summary>菜单状态行用的一句话：现在贴哪、多宽、实际在第几像素。</summary>
+    internal string Describe()
+    {
+        string place = Place switch
+        {
+            TaskbarPlace.Center => "屏幕正中",
+            TaskbarPlace.Right => "靠托盘左边",
+            TaskbarPlace.Custom => "自定义左边距",
+            _ => "贴开始菜单左边",
+        };
+        string where = "";
+        if (_parent != IntPtr.Zero && Native.IsWindow(_parent))
+        {
+            int x = CurrentX();
+            double sc = _scale > 0 ? _scale : 1.0;
+            where = " · x=" + x + "px（" + (int)Math.Round(x / sc) + " dip）";
+        }
+        return "现在：" + place + " · 宽 " + WidthDip + where;
+    }
+
+    /// <summary>
+    /// 自定义左边距的可用范围（dip）：0 到「任务栏宽减数字宽」。
+    /// 任务栏还没挂上时给一个宽裕的默认上限，别让输入窗口报错。
+    /// </summary>
+    internal (int Min, int Max) PlaceLimits()
+    {
+        if (_parent == IntPtr.Zero || !Native.IsWindow(_parent)) return (0, 1200);
+        if (!Native.GetWindowRect(_parent, out var tb)) return (0, 1200);
+
+        int tbW = tb.Right - tb.Left;
+        double sc = _scale > 0 ? _scale : 1.0;
+        int w = (int)Math.Round(WidthDip * sc);
+        int maxDip = (int)Math.Max(0, Math.Round((tbW - w) / sc));
+        return (0, maxDip);
+    }
+
+    /// <summary>回到出厂：自动摆位 + 默认宽度。</summary>
+    internal void ResetPosition()
+    {
+        _settings.TaskbarLeftDip = -1;
+        _settings.TaskbarPlace = PlaceKey(TaskbarPlace.Auto);
+        _settings.TaskbarWidthDip = BaseWidthDip;
+        _settings.Save();
+        _font?.Dispose();
+        _font = null;
+        Reposition(true);
+        LogSink.Write("[taskbar] 位置与大小都已重置（自动 + 宽 84）");
+    }
+
     /// <summary>喂一帧数据过来。只在显示内容真的变了才重画，省点 CPU。</summary>
     internal void Apply(Snapshot snap)
     {
         string before = Label(_snap);
         _snap = snap;
         if (Label(_snap) != before) Redraw();
-    }
-
-    /// <summary>回到自动摆位（开始按钮左边）。</summary>
-    internal void ResetPosition()
-    {
-        _settings.TaskbarLeftDip = -1;
-        _settings.Save();
-        Reposition(true);
-        LogSink.Write("[taskbar] 位置重置为自动");
     }
 
     /// <summary>拆掉：先解除父子关系并恢复成普通窗口，再释放。</summary>
@@ -104,7 +257,7 @@ internal sealed class TaskbarWindow : WinBase
     /// <summary>ULW 窗口的内容由 Redraw 提交，WM_PAINT 不负责绘制。</summary>
     protected override void Paint(Graphics g) { }
 
-    // ---- 鼠标：拖到哪算哪，单击打开面板 ----
+    // ---- 鼠标：拖到哪算哪（自动记成自定义档），单击打开面板 ----
 
     protected override bool WantsHandCursor(int x, int y) => true;
 
@@ -135,6 +288,18 @@ internal sealed class TaskbarWindow : WinBase
         else _onOpen();
     }
 
+    /// <summary>
+    /// 拖动途中捕获被抢走：以前会卡在 _dragging = true，之后 tick 里的自动重排全被挡住、
+    /// 松手也存不下位置 —— 表现就是「拖到一半不动了，下次开机又回原位」。
+    /// </summary>
+    protected override void OnCaptureLost()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        LogSink.Write("[taskbar] 拖动被系统中断，按当前位置收尾 moved=" + _dragMoved);
+        if (_dragMoved) SaveManualPosition(CurrentX());
+    }
+
     private int CurrentX()
     {
         if (_parent == IntPtr.Zero || !Native.IsWindow(_parent)) return 0;
@@ -156,6 +321,7 @@ internal sealed class TaskbarWindow : WinBase
         if (me.Left - tb.Left == clamped) return;
 
         Native.MoveWindow(Hwnd, clamped, 0, w, h, false);
+        RaiseZOrder();
         Redraw();
     }
 
@@ -163,6 +329,7 @@ internal sealed class TaskbarWindow : WinBase
     {
         double dip = _scale > 0 ? x / _scale : x;
         _settings.TaskbarLeftDip = Math.Round(dip, 2);
+        _settings.TaskbarPlace = PlaceKey(TaskbarPlace.Custom);
         _settings.Save();
         LogSink.Write("[taskbar] 手动位置 x=" + x + " dip=" + _settings.TaskbarLeftDip.ToString("F2"));
     }
@@ -255,6 +422,17 @@ internal sealed class TaskbarWindow : WinBase
         return Reposition(true);
     }
 
+    /// <summary>
+    /// 把自己提到兄弟窗口最前面。0.5.4 之前一辈子只调一次不带 z 序的 SetWindowPos，
+    /// 于是拖到托盘区就被 TrayNotifyWnd 盖住 —— issue #7 的「看不到 / 挪不过去」。
+    /// </summary>
+    private void RaiseZOrder()
+    {
+        if (!IsValid) return;
+        Native.SetWindowPos(Hwnd, new IntPtr(Native.HWND_TOP), 0, 0, 0, 0,
+            Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER);
+    }
+
     private bool Reposition(bool force = false)
     {
         if (_parent == IntPtr.Zero || !Native.IsWindow(_parent)) return false;
@@ -266,44 +444,41 @@ internal sealed class TaskbarWindow : WinBase
 
         uint dpi = Native.GetDpiForWindow(_parent);
         _scale = Math.Max(1.0, (dpi < 48 ? 96u : dpi) / 96.0);
-        int w = (int)Math.Round(DesignWidthDip * _scale);
+        int w = (int)Math.Round(WidthDip * _scale);
         int gap = (int)Math.Round(GapDip * _scale);
 
-        int x = _settings.TaskbarLeftDip >= 0
-            ? (int)Math.Round(_settings.TaskbarLeftDip * _scale)
-            : AutoX(tb, w, gap);
+        int startLeft = -1, startRight = -1;
+        var start = Native.FindWindowExW(_parent, IntPtr.Zero, "Start", null);
+        if (start != IntPtr.Zero && Native.GetWindowRect(start, out var sr) && sr.Left >= tb.Left && sr.Left < tb.Right)
+        {
+            startLeft = sr.Left - tb.Left;
+            startRight = sr.Right - tb.Left;
+        }
 
-        x = Math.Max(0, Math.Min(x, Math.Max(0, tbW - w)));
+        int trayLeft = -1;
+        var tray = Native.FindWindowExW(_parent, IntPtr.Zero, "TrayNotifyWnd", null);
+        if (tray != IntPtr.Zero && Native.GetWindowRect(tray, out var tr) && tr.Left > tb.Left && tr.Left < tb.Right)
+            trayLeft = tr.Left - tb.Left;
 
-        if (!force
+        int x = PlaceX(Place, tbW, w, gap, startLeft, startRight, trayLeft,
+                       _settings.TaskbarLeftDip, _scale);
+
+        bool same = !force
             && Native.GetWindowRect(Hwnd, out var cur)
             && cur.Left == tb.Left + x && cur.Top == tb.Top
-            && cur.Right - cur.Left == w && cur.Bottom - cur.Top == tbH)
+            && cur.Right - cur.Left == w && cur.Bottom - cur.Top == tbH;
+
+        if (!same)
         {
-            return true;
+            Native.MoveWindow(Hwnd, x, 0, w, tbH, false);
+            Width = w;
+            Height = tbH;
+            Redraw();
         }
 
-        Native.MoveWindow(Hwnd, x, 0, w, tbH, false);
-        Width = w;
-        Height = tbH;
-        Redraw();
+        // 每拍都提一次 z 序：任务栏自己也会插新窗口（托盘展开、通知区更新），早点把位置抢回来
+        RaiseZOrder();
         return true;
-    }
-
-    /// <summary>自动位置：开始按钮左边；左边放不下就它右边；连开始按钮都找不到就贴任务栏最左。</summary>
-    private int AutoX(Native.RECT tb, int w, int gap)
-    {
-        int x = gap;
-        var start = Native.FindWindowExW(_parent, IntPtr.Zero, "Start", null);
-        if (start != IntPtr.Zero
-            && Native.GetWindowRect(start, out var sr)
-            && sr.Left >= tb.Left && sr.Left < tb.Right)
-        {
-            int leftOfStart = sr.Left - tb.Left - gap - w;
-            int tbW = tb.Right - tb.Left;
-            x = leftOfStart >= gap ? leftOfStart : Math.Min(tbW - w, sr.Right - tb.Left + gap);
-        }
-        return x;
     }
 
     // ---- 定时自愈 ----

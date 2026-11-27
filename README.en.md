@@ -51,17 +51,18 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | ⚡ **Total power at a glance** | A small digit strip at the far left of the taskbar shows the total output of all four ports, refreshed every second. The tray icon itself is just an on / off badge (green when connected, grey when not) |
 | 🖥️ **Four ports on one screen** | The panel opens straight onto C1 / C2 / C3 / A with voltage, current, power and total output, refreshed every second |
 | 🔵 **Bluetooth direct** | Full Xiaomi MIoT BLE authentication implemented from scratch (HKDF + HMAC + AES-CCM), measured at 3.7–4.6 s to authenticate; no Mi Home app in the loop, no gateway |
-| 📊 **Taskbar too** | A small strip at the far left of the taskbar, right next to the Start button, shows total power live — digits only, no icon and no background plate, and you can drag it somewhere else |
+| 📊 **Taskbar too** | A small strip on the taskbar shows total power live — digits only, no icon and no background plate. **Four positions** (left of Start / screen centre / right next to the tray / custom left offset) and **four widths** (small / medium / large / custom), and it still drags too |
 | 🎛️ **It can control** | One switch per port on the panel's Control tab to cut or restore power directly; every write is read back and verified, and failures explain themselves at the bottom |
 | ⚡ **Charge mode** | Third panel tab, four profiles: AI / Digital ecosystem / Single port / Balanced. One click applies it and reads the device back; also in the tray right-click menu |
 | 🎚️ **Device settings** | Tray menu -> "Device settings": screen timeout, idle screen-off, orientation lock, screen language, per-port countdown shutoff, USB-A low-current mode and per-port fast-charge protocols. Anything that cannot be read is dimmed and unclickable - "not read" is never shown as "off" |
-| ⏱️ **Per-port capture** | Tray menu -> "Per-port capture": sample one port every second and, on stop, get Wh, average / peak voltage, current and power, the voltage range and how many tier changes there were; averages divide by the seconds that actually delivered power |
+| 📈 **Power chart** | Fourth panel tab: one line per port, 1 / 5 / 15 / 30 minute window of your choice; memory only (30 minutes ≈ 72 KB), nothing written to disk |
+| ⏱️ **Per-port capture** | Tray menu -> "Per-port capture": sample one port every second and, on stop, get Wh, average / peak voltage, current and power, the voltage range and how many tier changes there were; averages divide by the seconds that actually delivered power. The result exports to **CSV** (one row per second) |
 | 📌 **Panel that stays on top** | Tray menu -> "Always on top": the panel stays above other windows. Different from "Pin panel to desktop", which only stops it auto-hiding; both can be on |
-| 💬 **About** | Tray menu -> "About": version, project page and who helped with this release. Opening it sends no request at all; only "Check for updates" touches the network |
+| 💬 **About** | Tray menu -> "About": version, project page and who helped with this release. Opening it sends no request at all; only "Check for updates" touches the network (the automatic check at startup can be switched off in the menu) |
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
-| 🔄 **Updates itself** | One click on "Check for updates" downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. Only that click touches the network; nothing else does |
-| 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on |
+| 🔄 **Updates itself** | **It checks 8 seconds after every launch** (so Bluetooth connects first; switchable in the menu): a new version puts a small red dot on the tray icon's top-right corner and turns the menu entry into "检查更新…（有 0.5.5）". One click on that entry downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. The automatic check asks for a version number only and sends nothing about this machine |
+| 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on, and an entry that has news carries a small red dot at its right end |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
@@ -125,7 +126,7 @@ That's it — later runs need no scanning, and authentication takes about 4 seco
 
 ![Power panel: four-port readings and total output](docs/aot-demo-read.png)
 
-A 320×404 borderless dark window with two tabs: **Read** (the default) and **Control**. Drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
+A 320×404 borderless dark window with four tabs: **Read** (the default), **Control**, **Mode** and **Chart**. Drag it by any blank area, close it with `Esc`, and it tucks itself away when it loses focus.
 
 * The top row holds the device name, a status dot plus its label (green = connected, amber = connecting, red = offline, no fill) and the pin
 * **Read tab**: the large total output plus four rows of voltage, current and power for C1 / C2 / C3 / A, refreshed every second; ports with nothing plugged in read "Idle"
@@ -155,7 +156,11 @@ The `6.0W` in the picture above is light blue (a phone charging at idle): the di
 with the same font and colour rules it uses at runtime, over this machine's real Windows taskbar — that is exactly where it sits, left of the Start button.
 
 * It hangs off the taskbar window, so it takes no desktop space, stays out of Alt+Tab, and does not interfere with the taskbar's centering or auto-hide
-* **Position is up to you**: hold and drag the digits left or right, and the position is remembered across reboots
+* **Pick the position instead of dragging** (0.5.4): tray menu → "Taskbar digits" offers **auto** (left of Start) / **centre** / **right** (left of the tray) /
+  **custom left offset**. Dragging it into the tray area used to look like it refused to move: after docking, the z-order was never touched again, so the
+  tray window covered it whole. Every re-layout now raises it to the front of its siblings
+* **Size too**: small / medium / large / custom width (56..160) in the same menu; **the font follows the width**, so widening never clips the digits
+* **Dragging still works**: hold the digits and drag, and the position is remembered as a custom left offset
 * Toggle it from the tray context menu → "Show power on taskbar"; → "Reset taskbar digits position" puts it back to the left of the Start button
 
 ### Control page
@@ -184,6 +189,25 @@ The panel's third tab, the same thing as "charge mode" in the Mi Home app (scene
 * The card for the current profile gets a green border, a green bar on its left and a small "current" tag; when the charger is not connected the whole page dims
 * The tab reads the real value from the device every time you open it — no cached value pretending
 * The tray right-click menu has a matching "Charge mode" submenu, with the check mark following the current profile
+
+### Power chart
+
+![Chart tab: one line per port, the span pill on the right](docs/aot-demo-chart.png)
+
+The panel's fourth tab answers "what did the last few minutes look like":
+
+* One line per port, in the same colours as the bars on the Read tab: **C1 blue / C2 green / C3+A amber / A violet**
+* The pill in the top right cycles the span: **1 minute → 5 → 15 → 30 → back to 1**; also under the right-click
+  menu entry "Chart span", stored as `ChartSeconds` in `settings.json`
+* The vertical axis picks a round top in 20 W steps (a 65 W laptop does not flatten the phone's line onto the
+  floor), with a scale on the left and the window's **peak / average** at the bottom
+* **Memory only**: one point per second, capped at 1800 points for 30 minutes (about 72 KB); closing the app
+  loses it and no file is written. To keep the numbers, use "Per-port capture → Export CSV"
+* An unplugged port, an idle one, and the one that got folded into C3+A all read "no value", so the line
+  **breaks** there instead of drawing straight across; a port with no output at all in the window is not drawn
+  (its legend entry is dimmed), which stops an all-zero port from adding a line that looks like an axis
+* Samples closer than 0.4 s apart are skipped: the device sometimes pushes twice in a row and that would only
+  add duplicate points
 
 ### Device settings
 
@@ -215,6 +239,8 @@ Tray menu -> "Per-port capture". Pick C1 / C2 / C3 / A, press "Start capture", i
 * Gaps longer than 4 s are skipped rather than filled in, so the total cannot grow out of nowhere
 * 30 s with no output, or 30 s without readings, ends the capture on its own and tells you which one it was
 * "Copy summary" puts the whole result on the clipboard, ready to paste into a chat window
+* "**Export CSV**" writes the per-second data to `Documents\CuktechTray\cuktech-capture-C1-20261127-214012.csv`,
+  UTF-8 with BOM, ready to open in Excel. Capture itself writes nothing — a file only appears when you press that button
 
 ### About
 
@@ -222,7 +248,7 @@ Tray menu -> "Per-port capture". Pick C1 / C2 / C3 / A, press "Start capture", i
 
 Tray menu -> "About". It shows the version, the project page, the tested firmware and who helped with this release.
 
-* Opening this window sends **no network request**; only "Check for updates" asks GitHub
+* Opening this window sends **no network request**; only "Check for updates" asks GitHub (the automatic check at startup is a separate thing and can be switched off in the menu)
 * "Open download page" just opens the Releases page in your browser - for people who would rather not let the exe replace itself
 
 ### Tray menu
@@ -253,7 +279,8 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
 * **Left-click** the tray icon: show / hide the panel; **right-click** it: the menu
 * Double-clicking the exe while the program is already running does not start a second process — it brings up the panel instead
 * The full context menu: Show power panel / Show control page / Device settings / Per-port capture / Charge mode / Pin panel to desktop / Always on top /
-  Show power on taskbar / Reset taskbar digits position / Reset panel position (back to the bottom-right corner) / Reconnect / Check for updates / About / Install on this PC (Uninstall from this PC) /
+  Show power on taskbar / Taskbar digits (position and size) / Chart span / Reset taskbar digits position / Reset panel position (back to the bottom-right corner) /
+  Reconnect / Start with Windows / Re-pair device / Check for updates / About / Open log / Settings file / Install on this PC (Uninstall from this PC) / Quit
   Start with Windows / Open log / Settings file / Exit
 * In that menu, "Pin panel to desktop", "Always on top", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
 * "Pin panel to desktop" only stops the panel **auto-hiding**; switching to another app still pushes it behind. Tick "Always on top" when you want it to stay visible

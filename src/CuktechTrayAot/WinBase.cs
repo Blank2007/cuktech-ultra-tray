@@ -39,6 +39,12 @@ internal abstract class WinBase : IDisposable
 
     protected virtual void OnLeftDown(int x, int y) { }
     protected virtual void OnLeftUp(int x, int y) { }
+
+    /// <summary>
+    /// 鼠标捕获被别人抢走了（最常见：点着窗口拖动时 explorer 或别的窗口抢了 SetCapture）。
+    /// 不处理的话，按下时进入的「拖动中」状态会一直卡住，松手事件也永远收不到。
+    /// </summary>
+    protected virtual void OnCaptureLost() { }
     protected virtual void OnRightUp(int x, int y) { }
     protected virtual void OnMouseMove(int x, int y, bool entering) { }
     protected virtual void OnMouseLeave() { }
@@ -213,6 +219,10 @@ internal abstract class WinBase : IDisposable
                 OnLeftUp(Native.LoWord(lParam), Native.HiWord(lParam));
                 return IntPtr.Zero;
             }
+
+            case 0x0215: // WM_CAPTURECHANGED
+                OnCaptureLost();
+                return IntPtr.Zero;
 
             case Native.WM_RBUTTONUP:
                 OnRightUp(Native.LoWord(lParam), Native.HiWord(lParam));

@@ -56,6 +56,30 @@ internal sealed class Settings
     public double TaskbarLeftDip { get; set; } = -1;
 
     /// <summary>
+    /// 任务栏数字的摆位方式：auto（开始按钮左边）/ center（屏幕正中）/ right（靠托盘左边）/ custom（用 TaskbarLeftDip）。
+    /// 0.5.4 起不再只有「拖到哪算哪」一条路 —— issue #7 的用户说拖不到右边，那就让它能直接选。
+    /// </summary>
+    public string TaskbarPlace { get; set; } = "auto";
+
+    /// <summary>
+    /// 任务栏数字块的宽度（dip）。字号跟着宽度走：11 × 宽 / 84，所以拉宽不会把字切掉。
+    /// 允许范围 56..160，超出按边界算。
+    /// </summary>
+    public double TaskbarWidthDip { get; set; } = 84;
+
+    /// <summary>
+    /// 面板「曲线」页签显示多长的时间窗（秒）。10..1800，默认 60。
+    /// 点页签右上角那枚胶囊会在 1/5/15/30 分钟之间循环，右键菜单里还能自己填。
+    /// </summary>
+    public int ChartSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// 打开软件时要不要自己查一次更新。默认开：用户要的是「每次打开自己查一遍」，
+    /// 但又不想被强制 —— 菜单里可以关掉，关掉之后只有手点「检查更新…」才查。
+    /// </summary>
+    public bool CheckUpdatesOnStart { get; set; } = true;
+
+    /// <summary>
     /// 用户是否已经在第一次打开时点过「同意并继续」。
     /// 0.4.6 之前没有这扇门（隐私说明只是向导里一行字），0.4.7 起第一次启动必须先过这一屏。
     /// 老版本升级上来的用户这里是 false，会再看一次，看完就写进 settings.json。

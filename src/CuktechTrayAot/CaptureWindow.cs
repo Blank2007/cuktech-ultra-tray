@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text;
 using CuktechMible;
 
 namespace CuktechTray;
@@ -22,7 +23,7 @@ internal sealed class CaptureWindow : WinBase
 {
     // ---- 设计尺寸（96 DPI 下的逻辑像素）----
     private const int DesignW = 360;
-    private const int DesignH = 482;
+    private const int DesignH = 534;   // 0.5.x：按钮改成两排（上面开始/停止 + 关闭，下面复制摘要 + 导出 CSV）
     private const int PadX = 24;
     private const int TitleY = 20;
     private const int SubY = 48;
@@ -44,12 +45,15 @@ internal sealed class CaptureWindow : WinBase
     private const int ReasonY = 364;       // 结束原因
     private const int StatusY = 392;   // 结果区到 384，留 8px 再放状态行
     private const int BtnH = 42;
-    private const int BtnY = DesignH - 24 - BtnH;   // 416
-    private const int BtnPrimaryW = 132;
-    private const int BtnSecondW = 88;
-    private const int BtnCloseW = 76;
+    private const int BtnY = 416;                   // 上排：开始采集 / 停止 + 关闭
+    private const int BtnRowGap = 10;
+    private const int BtnY2 = BtnY + BtnH + BtnRowGap;   // 468：下排 复制摘要 + 导出 CSV
+    private const int BtnPrimaryW = 208;             // 24..232
+    private const int BtnCloseW = 96;                // 240..336，右对齐到 DesignW-PadX
+    private const int BtnSecondW = 152;              // 24..176
+    private const int BtnExportW = 152;              // 184..336
     private const int BtnGap = 8;
-    // 132+8+88+8+76 = 312 = DesignW-PadX*2：三个按钮正好填满一行，右下「关闭」右对齐到 336
+    // 上排 208+8+96 = 312、下排 152+8+152 = 312，都等于 DesignW-PadX*2，两条边各自对齐
 
     // ---- 结果区：左边标签 + 右边「平均 / 最大」两列，两列共用一条右边线(336) ----
     private const int LabelW = 120;                  // 标签 24..144
@@ -63,6 +67,7 @@ internal sealed class CaptureWindow : WinBase
     private const int HitPrimary = 1;
     private const int HitSecondary = 2;
     private const int HitClose = 3;
+    private const int HitExport = 4;
     private const int HitPortBase = 100;
 
     // ---- 配色：跟 PanelWindow / ConsentWindow 完全同一套 ----
@@ -221,7 +226,8 @@ internal sealed class CaptureWindow : WinBase
 
     private Rectangle PortRect(int i) => new(S(PadX + i * (PortW + PortGap)), S(PortY), S(PortW), S(PortH));
     private Rectangle PrimaryRect() => new(S(PadX), S(BtnY), S(BtnPrimaryW), S(BtnH));
-    private Rectangle SecondRect() => new(S(PadX + BtnPrimaryW + BtnGap), S(BtnY), S(BtnSecondW), S(BtnH));
+    private Rectangle SecondRect() => new(S(PadX), S(BtnY2), S(BtnSecondW), S(BtnH));
+    private Rectangle ExportRect() => new(S(PadX + BtnSecondW + BtnGap), S(BtnY2), S(BtnExportW), S(BtnH));
     private Rectangle CloseRect() => new(S(DesignW - PadX - BtnCloseW), S(BtnY), S(BtnCloseW), S(BtnH));
 
     private int HitTest(int x, int y)
@@ -229,6 +235,7 @@ internal sealed class CaptureWindow : WinBase
         for (int i = 0; i < 4; i++) if (PortRect(i).Contains(x, y)) return HitPortBase + i;
         if (PrimaryRect().Contains(x, y)) return HitPrimary;
         if (SecondRect().Contains(x, y)) return HitSecondary;
+        if (ExportRect().Contains(x, y)) return HitExport;
         if (CloseRect().Contains(x, y)) return HitClose;
         return HitNone;
     }
@@ -241,6 +248,7 @@ internal sealed class CaptureWindow : WinBase
         {
             HitPrimary => Capturing || Ready,
             HitSecondary => Result is not null,
+            HitExport => Result is { } r && r.Stats.Samples.Count > 0,
             HitClose => true,
             _ => false,
         };
@@ -272,6 +280,7 @@ internal sealed class CaptureWindow : WinBase
         {
             case HitPrimary: ToggleCapture(); break;
             case HitSecondary: CopySummary(); break;
+            case HitExport: ExportCsv(); break;
             case HitClose: CloseWindow(); break;
         }
     }
@@ -329,6 +338,43 @@ internal sealed class CaptureWindow : WinBase
         // 用系统消息框而不是自己画：摘要就是要能 Ctrl+C 出来，原生 Dialog 自带选中与复制
         Native.MessageBoxW(Hwnd, res.SummaryText, "采集摘要（Ctrl+C 可以复制）",
             Native.MB_OK | Native.MB_ICONINFORMATION);
+        Invalidate();
+    }
+
+    /// <summary>
+    /// 把逐秒样本写成 CSV，落在「文档\\CuktechTray」下，导完弹个框把路径说出来。
+    /// 采集本身不落盘（m12203 的要求），这里是用户亲手点的动作，所以算例外。
+    /// </summary>
+    private void ExportCsv()
+    {
+        var res = Result;
+        if (res is null || res.Stats.Samples.Count == 0)
+        {
+            SetStatus("先采集一次再导出", StatusKind.Bad);
+            return;
+        }
+
+        try
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CuktechTray");
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, res.DefaultFileName);
+            // 带 BOM 的 UTF-8：Excel 双击打开才认得出中文表头，不带会显示成乱码
+            File.WriteAllText(path, res.CsvText(), new UTF8Encoding(true));
+            LogSink.Write("[capture] 导出 CSV " + path + " (" + res.Stats.Samples.Count + " 行)");
+            SetStatus("已导出 " + res.Stats.Samples.Count + " 行", StatusKind.Ok);
+            Native.MessageBoxW(Hwnd,
+                "导出好了：" + Environment.NewLine + Environment.NewLine + path +
+                Environment.NewLine + Environment.NewLine +
+                res.Stats.Samples.Count + " 行逐秒数据，Excel 双击就能开。",
+                "导出 CSV", Native.MB_OK | Native.MB_ICONINFORMATION);
+        }
+        catch (Exception ex)
+        {
+            // 文档目录被重定向到不存在的位置、权限不足、文件正被 Excel 独占打开，都会到这儿
+            LogSink.Write("[capture] 导出 CSV 失败：" + ex.Message);
+            SetStatus("导出失败，看日志", StatusKind.Bad);
+        }
         Invalidate();
     }
 
@@ -629,14 +675,19 @@ internal sealed class CaptureWindow : WinBase
         Color fill = !on ? BtnDisabledBg : cap ? (_hover == HitPrimary ? BadHot : Bad) : (_hover == HitPrimary ? OkHot : Ok);
         Color fg = !on ? Faint : cap ? Color.FromArgb(255, 255, 255) : BtnTextOnOk;
         DrawButton(g, PrimaryRect(), label, fill, fg, !on);
+        DrawButton(g, CloseRect(), "关闭", _hover == HitClose ? PillHoverBg : PillBg, Fg, true);
 
-        // 「复制摘要」没有结果就是灰的：点了也弹不出东西，不如直接不可用
-        bool canCopy = Result is not null;
+        // 「复制摘要」「导出 CSV」没有结果就是灰的：点了也弹不出东西，不如直接不可用
+        var res = Result;
+        bool canCopy = res is not null;
         DrawButton(g, SecondRect(), "复制摘要",
             canCopy && _hover == HitSecondary ? PillHoverBg : PillBg,
             canCopy ? Fg : Faint, true);
 
-        DrawButton(g, CloseRect(), "关闭", _hover == HitClose ? PillHoverBg : PillBg, Fg, true);
+        bool canExport = res is { } r && r.Stats.Samples.Count > 0;
+        DrawButton(g, ExportRect(), "导出 CSV",
+            canExport && _hover == HitExport ? PillHoverBg : PillBg,
+            canExport ? Fg : Faint, true);
     }
 
     private void DrawButton(Graphics g, Rectangle r, string text, Color fill, Color fg, bool stroke)
@@ -712,6 +763,15 @@ internal sealed class CaptureWindow : WinBase
             Stats = acc,
             Reason = CaptureEndReason.Stopped,
         };
+    }
+
+
+    /// <summary>自查用：把演示数据的逐秒样本写成 CSV，好核对表头与每行列数。</summary>
+    public void WriteCsvProbe(string path)
+    {
+        if (_demoResult is null) _demoResult = BuildDemoResult();
+        File.WriteAllText(path, _demoResult.CsvText(), new UTF8Encoding(true));
+        LogSink.Write("[capture] csv probe " + path + " (" + _demoResult.Stats.Samples.Count + " 行)");
     }
 
     /// <summary>把当前一帧画进 PNG（四角透明，照 ConsentWindow 的写法，不依赖截图工具）。</summary>

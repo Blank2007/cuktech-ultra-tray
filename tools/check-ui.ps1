@@ -4,6 +4,7 @@
     What it guards
     --------------
     * hit rects of the device-settings window  (--probe-hits  -> tools/baseline/hits.txt)
+    * the taskbar digit placement table        (--probe-taskbar -> tools/baseline/taskbar.txt)
     * sizes of every self-rendered window shot (--render-*    -> tools/baseline/renders.tsv)
     * optionally the pixel hash of those shots (-StrictHash)
 
@@ -40,6 +41,7 @@ $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $tools = Join-Path (Split-Path -Parent $root) ".tools"
 $baselineDir = Join-Path $root "tools\baseline"
 $hitsBaseline = Join-Path $baselineDir "hits.txt"
+$taskbarBaseline = Join-Path $baselineDir "taskbar.txt"
 $rendersBaseline = Join-Path $baselineDir "renders.tsv"
 
 function Write-Step($text) { Write-Host ("==> " + $text) -ForegroundColor Cyan }
@@ -92,7 +94,9 @@ $runs = @(
     @{ name = "render-capture";  args = @("--render-capture", "--render-scale=1.25") },
     @{ name = "render-about";    args = @("--render-about", "--render-scale=1.25") },
     @{ name = "render-consent";  args = @("--render-consent", "--render-scale=1.25") },
-    @{ name = "render-wizard";   args = @("--render-wizard", "--render-scale=1.25") }
+    @{ name = "render-wizard";   args = @("--render-wizard", "--render-scale=1.25") },
+    @{ name = "render-number";   args = @("--render-number", "--render-scale=1.25") },
+    @{ name = "probe-taskbar";   args = @("--probe-taskbar") }
 )
 
 foreach ($r in $runs) {
@@ -111,6 +115,9 @@ foreach ($r in $runs) {
 
 $hitsPath = Join-Path $OutDir "tmp-hits.txt"
 if (-not (Test-Path $hitsPath)) { throw ("probe-hits wrote nothing: " + $hitsPath) }
+
+$taskbarPath = Join-Path $OutDir "tmp-taskbar.txt"
+if (-not (Test-Path $taskbarPath)) { throw ("probe-taskbar wrote nothing: " + $taskbarPath) }
 
 $shots = Get-ChildItem $OutDir -Filter "tmp-*.png" | Sort-Object Name
 if ($shots.Count -lt 8) {
@@ -135,6 +142,7 @@ $nlChar = [char]10
 $tabChar = [char]9
 
 $actualHits = ((@(Get-Content -Path $hitsPath)) -join $nlChar) + $nlChar
+$actualTaskbar = ((@(Get-Content -Path $taskbarPath)) -join $nlChar) + $nlChar
 $actualRenders = New-Object System.Collections.Generic.List[string]
 foreach ($s in $shots) {
     $wh = Get-PngSize $s.FullName
@@ -147,14 +155,17 @@ if ($UpdateBaseline) {
     New-Item -ItemType Directory -Force -Path $baselineDir | Out-Null
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($hitsBaseline, $actualHits, $utf8)
+    [System.IO.File]::WriteAllText($taskbarBaseline, $actualTaskbar, $utf8)
     [System.IO.File]::WriteAllText($rendersBaseline, $actualRendersText, $utf8)
     Write-Step ("baseline written: " + $hitsBaseline)
+    Write-Step ("baseline written: " + $taskbarBaseline)
     Write-Step ("baseline written: " + $rendersBaseline)
-    Write-Host ("    " + $shots.Count + " shots, " + (@($actualHits -split $nlChar).Count - 1) + " hit rects") -ForegroundColor Green
+    Write-Host ("    " + $shots.Count + " shots, " + (@($actualHits -split $nlChar).Count - 1) + " hit rects, " + (@($actualTaskbar -split $nlChar).Count - 1) + " placement rows") -ForegroundColor Green
     exit 0
 }
 
 if (-not (Test-Path $hitsBaseline)) { throw ("missing baseline: " + $hitsBaseline + " (run with -UpdateBaseline once)") }
+if (-not (Test-Path $taskbarBaseline)) { throw ("missing baseline: " + $taskbarBaseline + " (run with -UpdateBaseline once)") }
 if (-not (Test-Path $rendersBaseline)) { throw ("missing baseline: " + $rendersBaseline + " (run with -UpdateBaseline once)") }
 
 $problems = New-Object System.Collections.Generic.List[string]
@@ -170,6 +181,21 @@ if ($wantHits -ne $actualHits) {
         $b = if ($i -lt $gotLines.Count) { $gotLines[$i] } else { "<none>" }
         if ($a -ne $b) {
             Write-Host ("    line " + ($i + 1) + ": baseline [" + $a + "] -> now [" + $b + "]") -ForegroundColor Yellow
+        }
+    }
+}
+
+$wantTaskbar = ((@(Get-Content -Path $taskbarBaseline)) -join $nlChar) + $nlChar
+if ($wantTaskbar -ne $actualTaskbar) {
+    $problems.Add("taskbar placement table changed")
+    $wantLines = $wantTaskbar -split $nlChar
+    $gotLines = $actualTaskbar -split $nlChar
+    $max = [Math]::Max($wantLines.Count, $gotLines.Count)
+    for ($i = 0; $i -lt $max; $i++) {
+        $a = if ($i -lt $wantLines.Count) { $wantLines[$i] } else { "<none>" }
+        $b = if ($i -lt $gotLines.Count) { $gotLines[$i] } else { "<none>" }
+        if ($a -ne $b) {
+            Write-Host ("    placement line " + ($i + 1) + ": baseline [" + $a + "] -> now [" + $b + "]") -ForegroundColor Yellow
         }
     }
 }
@@ -213,5 +239,5 @@ if ($problems.Count -gt 0) {
 
 $hashNote = "sizes only"
 if ($StrictHash) { $hashNote = "pixel hashes compared" }
-Write-Host ("UI CHECKS OK  (" + (@($actualHits -split $nlChar).Count - 1) + " hit rects, " + $shots.Count + " shots, " + $hashNote + ")") -ForegroundColor Green
+Write-Host ("UI CHECKS OK  (" + (@($actualHits -split $nlChar).Count - 1) + " hit rects, " + (@($actualTaskbar -split $nlChar).Count - 1) + " placement rows, " + $shots.Count + " shots, " + $hashNote + ")") -ForegroundColor Green
 exit 0

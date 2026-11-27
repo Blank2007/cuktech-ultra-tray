@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using CuktechMible;
 
 namespace CuktechTray;
@@ -21,6 +23,27 @@ namespace CuktechTray;
 /// · 峰值电流同理只统计带载样本，空载时读到的零点几毫安不算。
 /// · 换档次数要求前后两点都在带载，否则「拔线」这种 12V→0V 也会被记成换档。
 /// </summary>
+/// <summary>
+/// 一个采样点：相对开始时刻的秒数、电压、电流、功率，以及这一秒是否真的在带载。
+/// 只在内存里排着，导出 CSV 的时候按行写出去。
+/// </summary>
+internal readonly struct CaptureSample
+{
+    /// <summary>相对采集开始时刻的秒数。</summary>
+    public readonly double T;
+    public readonly double V;
+    public readonly double A;
+    public readonly double W;
+
+    /// <summary>这一秒是否在输出（state≠0 且功率 &gt; 0.05W）。</summary>
+    public readonly bool Live;
+
+    public CaptureSample(double t, double v, double a, double w, bool live)
+    {
+        T = t; V = v; A = a; W = w; Live = live;
+    }
+}
+
 internal sealed class CaptureAccumulator
 {
     /// <summary>采样次数（含空载样本）。</summary>
@@ -56,6 +79,14 @@ internal sealed class CaptureAccumulator
     public double LastPower { get; private set; }
     public DateTime? LastSampleAt { get; private set; }
 
+    /// <summary>逐秒样本，导出 CSV 用。上限 7200 条 ≈ 2 小时，超了就不再记 —— 长时间挂着采集不该把内存吃满。</summary>
+    public IReadOnlyList<CaptureSample> Samples => _samples;
+    public const int SampleCap = 7200;
+
+    private readonly List<CaptureSample> _samples = new();
+    private DateTime _startT;
+    private bool _hasStart;
+
     private double _prevV;
     private double _prevI;
     private DateTime _prevT;
@@ -89,6 +120,11 @@ internal sealed class CaptureAccumulator
         LastVoltage = d.Voltage;
         LastCurrent = d.Current;
         LastPower = power;
+
+        // 逐秒样本：相对开始时刻的秒数，导 CSV 时就是第一列
+        if (!_hasStart) { _startT = t; _hasStart = true; }
+        if (_samples.Count < SampleCap)
+            _samples.Add(new CaptureSample((t - _startT).TotalSeconds, d.Voltage, d.Current, power, active));
 
         // 最低 / 最高电压只认带载样本：空口插着充电器时那 5V 待机电、拔线之后的 0V 都不是「用户看到的电压」
         if (active)
@@ -157,6 +193,10 @@ internal sealed class CaptureAccumulator
             _prevActive = _prevActive,
             _hasPrev = _hasPrev,
         };
+        // 样本列表是引用类型，必须深拷一份：否则界面线程导出 CSV 时会读到后台线程正在改的 List
+        c._samples.AddRange(_samples);
+        c._startT = _startT;
+        c._hasStart = _hasStart;
         return c;
     }
 }
@@ -275,6 +315,41 @@ internal sealed class CaptureResult
     public string ActiveDurationText => ActiveSeconds > 0.5 ? Duration(ActiveSeconds) : "—";
 
     public string TotalDurationText => Duration(TotalSeconds);
+
+    /// <summary>
+    /// 导出文件名：cuktech-capture-C3-20261127-213045.csv。
+    /// 带上口名和时间，同一天采几次也不会互相覆盖。
+    /// </summary>
+    public string DefaultFileName
+    {
+        get
+        {
+            string port = PortName.Length > 0 ? PortName : "P" + (PortIndex + 1);
+            // 口名只会是 C1/C2/C3/A 这种，但还是挡一下文件系统不认的字符
+            foreach (char bad in System.IO.Path.GetInvalidFileNameChars()) port = port.Replace(bad, '_');
+            return "cuktech-capture-" + port + "-" + StartedAt.ToString("yyyyMMdd-HHmmss") + ".csv";
+        }
+    }
+
+    /// <summary>
+    /// 逐秒样本的 CSV：第一列是相对开始时刻的秒数（不是绝对时间，方便直接拿去画图）。
+    /// 用逗号分隔、CRLF 换行，数字一律走 InvariantCulture —— 中文环境下小数点是「.」，
+    /// 但换成某些区域设置会变「,」，那样整张表就错列了。
+    /// </summary>
+    public string CsvText()
+    {
+        var sb = new StringBuilder();
+        sb.Append("时间(s),电压(V),电流(A),功率(W),带载\r\n");
+        foreach (var s in Stats.Samples)
+        {
+            sb.Append(s.T.ToString("0.0", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(s.V.ToString("0.00", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(s.A.ToString("0.000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(s.W.ToString("0.00", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(s.Live ? '1' : '0').Append("\r\n");
+        }
+        return sb.ToString();
+    }
 
     /// <summary>复制到剪贴板用的纯文本摘要。</summary>
     public string SummaryText =>

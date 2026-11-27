@@ -12,7 +12,18 @@ internal sealed class MenuEntry
 {
     public string Text = string.Empty;
     public bool IsSeparator;
+
+    /// <summary>true = 勾选框（多选），false + Radio = 单选项（画圆点）。</summary>
     public bool Checked;
+
+    /// <summary>单选样式：左边画圆点而不是勾。用在一组互斥的选项上（位置档位、大小档位）。</summary>
+    public bool Radio;
+
+    /// <summary>
+    /// 行尾那颗小红点：表示「这条菜单上有事要你注意」（现在只用在「检查更新」有新版本时）。
+    /// 没选中的勾/圆点占的是左边，红点占右边，两者互不挡。
+    /// </summary>
+    public bool Dot;
     public bool Enabled = true;
     public bool Bold;
     public Action? Click;
@@ -23,7 +34,9 @@ internal sealed class MenuEntry
     public static MenuEntry Item(string text, Action? click = null) => new() { Text = text, Click = click };
     public static MenuEntry BoldItem(string text, Action? click = null) => new() { Text = text, Click = click, Bold = true };
     public static MenuEntry CheckItem(string text, bool on, Action? click = null) => new() { Text = text, Checked = on, Click = click };
+    public static MenuEntry RadioItem(string text, bool on, Action? click = null) => new() { Text = text, Checked = on, Radio = true, Click = click };
     public static MenuEntry Dim(string text) => new() { Text = text, Enabled = false };
+    public static MenuEntry DotItem(string text, Action? click = null) => new() { Text = text, Click = click, Dot = true };
     public static MenuEntry Sep() => new() { IsSeparator = true };
     public static MenuEntry WithSub(string text, params MenuEntry[] items) => new() { Text = text, Sub = items };
 }
@@ -43,12 +56,14 @@ internal sealed class MenuWindow : WinBase
     private static readonly Color MenuFg = Color.FromArgb(232, 234, 237);
     private static readonly Color MenuFgDim = Color.FromArgb(118, 125, 135);
     private static readonly Color MenuGreen = Color.FromArgb(52, 211, 153);
+    private static readonly Color DotRed = Color.FromArgb(239, 68, 68);
 
     private const int DesignRowH = 30;
     private const int DesignSepH = 9;
     private const int DesignPadLeft = 24;   // 左边留给自绘的勾
     private const int DesignPadRight = 16;
     private const int DesignArrowW = 14;
+    private const int DesignDotW = 16;     // 行尾红点占的宽度（含一点间距）
     private const int DesignPadV = 6;
     private const int DesignRadius = 10;
 
@@ -150,6 +165,7 @@ internal sealed class MenuWindow : WinBase
                     var font = e.Bold ? _bold! : _normal!;
                     int tw = font.Measure(e.Text, hdc);
                     if (e.HasSub) tw += S(DesignArrowW);
+                    if (e.Dot) tw += S(DesignDotW);
                     if (tw > maxText) maxText = tw;
                 }
             }
@@ -201,15 +217,18 @@ internal sealed class MenuWindow : WinBase
             if (i == _hot && e.Enabled)
                 FillRound(g, new RectangleF(S(4), row.Top + S(1), Width - S(8), row.H - S(2)), S(6), MenuHover);
 
-            if (e.Checked) DrawCheck(g, row.Top, row.H);
+            if (e.Radio) DrawRadio(g, row.Top, row.H, e.Checked);
+            else if (e.Checked) DrawCheck(g, row.Top, row.H);
 
             var font = e.Bold ? _bold! : _normal!;
             var color = e.Enabled ? MenuFg : MenuFgDim;
             int textX = S(DesignPadLeft);
-            int textW = Width - textX - S(DesignPadRight) - (e.HasSub ? S(DesignArrowW) : 0);
+            int textW = Width - textX - S(DesignPadRight)
+                        - (e.HasSub ? S(DesignArrowW) : 0) - (e.Dot ? S(DesignDotW) : 0);
             GdiText.Draw(g, e.Text, font, color, new Rectangle(textX, row.Top, textW, row.H), TextAnchor.Left, false);
 
             if (e.HasSub) DrawArrow(g, row.Top, row.H, color);
+            if (e.Dot) DrawDot(g, row.Top, row.H);
         }
     }
 
@@ -230,6 +249,33 @@ internal sealed class MenuWindow : WinBase
             new PointF(cx - 1f * s, cy + 3.5f * s),
             new PointF(cx + 4.5f * s, cy - 4f * s),
         });
+    }
+
+    /// <summary>单选项左边那颗圆点：没选就只有一个淡环，选了就是绿环 + 实心绿点。</summary>
+    private void DrawRadio(Graphics g, int top, int h, bool on)
+    {
+        float s = Scale;
+        float cx = S(11.5f);
+        float cy = top + h / 2f;
+        float r = 4.2f * s;
+        var rect = new RectangleF(cx - r, cy - r, r * 2, r * 2);
+        using (var pen = new Pen(on ? MenuGreen : MenuFgDim, Math.Max(1f, 1.2f * s)))
+            g.DrawEllipse(pen, rect);
+        if (!on) return;
+        float ir = 2.1f * s;
+        using var brush = new SolidBrush(MenuGreen);
+        g.FillEllipse(brush, cx - ir, cy - ir, ir * 2, ir * 2);
+    }
+
+    /// <summary>行尾那颗红点：跟标题栏/托盘角标的红一样，一眼能看见但不刺眼。</summary>
+    private void DrawDot(Graphics g, int top, int h)
+    {
+        float s = Scale;
+        float r = 3.2f * s;
+        float cx = Width - S(DesignPadRight) - S(4);
+        float cy = top + h / 2f;
+        using var brush = new SolidBrush(DotRed);
+        g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
     }
 
     private void DrawArrow(Graphics g, int top, int h, Color color)

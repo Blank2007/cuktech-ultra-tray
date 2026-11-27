@@ -24,9 +24,10 @@ internal static class WattIcon
     }
 
     /// <summary>画一枚闪电徽标。accent 只用来区分「已连接 / 未连接」两种状态。</summary>
-    public static Icon Create(Color accent)
+    /// <param name="badge">true = 右上角加一颗红点（有新版本）。</param>
+    public static Icon Create(Color accent, bool badge = false)
     {
-        using var bmp = CreateBitmap(IconSize, accent);
+        using var bmp = CreateBitmap(IconSize, accent, badge);
         var handle = bmp.GetHicon();
         try
         {
@@ -43,7 +44,7 @@ internal static class WattIcon
     /// 按指定边长画一枚图标位图。托盘里用 GetSystemMetrics 得到的 16px，
     /// 文档和视频要放大展示，所以把边长交出来（画法完全不变，只是尺寸不同）。
     /// </summary>
-    public static Bitmap CreateBitmap(int size, Color accent)
+    public static Bitmap CreateBitmap(int size, Color accent, bool badge = false)
     {
         var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
@@ -51,7 +52,27 @@ internal static class WattIcon
         g.SmoothingMode = SmoothingMode.AntiAlias;
         FillRoundedBackground(g, size, accent);
         DrawBolt(g, size);
+        if (badge) DrawBadge(g, size);
         return bmp;
+    }
+
+    /// <summary>
+    /// 右上角那颗红点（有新版本时）。外面留一圈浅色描边：任务栏/托盘底色是亮是暗都看不清
+    /// 红点压在深绿底上的边界，白边一圈就分开了。
+    /// </summary>
+    private static void DrawBadge(Graphics g, int size)
+    {
+        float s = size;
+        float r = Math.Max(2.4f, s * 0.24f);
+        float ring = Math.Max(0.8f, s * 0.05f);
+        float outer = r + ring;
+        float cx = s - outer;
+        float cy = outer;
+
+        using (var edge = new SolidBrush(Color.FromArgb(248, 249, 251)))
+            g.FillEllipse(edge, cx - outer, cy - outer, outer * 2, outer * 2);
+        using var brush = new SolidBrush(Color.FromArgb(229, 57, 53));
+        g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
     }
 
     private static Color Lighten(Color c, float amount) => Color.FromArgb(

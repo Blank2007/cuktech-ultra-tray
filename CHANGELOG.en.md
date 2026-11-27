@@ -4,6 +4,63 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.4 — 2026-11-27
+
+This one rounds the panel out into a full set: **a chart tab for the power history**, **CSV export for
+single-port capture**, **an update check that runs by itself on startup and shows a red dot on the tray icon**,
+and the "I can't move the taskbar number to the right" report from
+[issue #7](https://github.com/Blank2007/cuktech-ultra-tray/issues/7) — that position is now a four-way choice.
+
+- **Fourth panel tab: chart** (`src/CuktechTrayAot/PanelWindow.cs`, new `src/CuktechTrayAot/PowerHistory.cs`)
+  - One line per port (C1 blue / C2 green / C3+A amber / A violet); the vertical axis picks a round top
+    in 20 W steps (`NiceMax`)
+  - Four spans: tap the pill in the top right to cycle **1 / 5 / 15 / 30 minutes**; also in the right-click
+    menu under "功率曲线时长", stored as `ChartSeconds` in `settings.json`
+  - **Memory only**: 1 Hz × 30 minutes = a 1800-point cap (`PowerHistory.Capacity`, roughly 72 KB), oldest
+    dropped first. Nothing is written to disk — this tab is for "what did the last few minutes look like";
+    if you want the data, use single-port capture
+  - An unplugged / idle port, and the one that got folded into C3+A, records **-1**, so the line **breaks**
+    there instead of drawing straight across; a port with no output at all in the window isn't drawn (its
+    legend entry is just dimmed), which stops an all-zero port from adding a line that looks like an axis
+  - Samples closer than 0.4 s apart are skipped: the device sometimes pushes twice in a row and that would
+    only add duplicate points
+- **Single-port capture exports CSV** (`src/CuktechTray/Capture.cs`, `src/CuktechTrayAot/CaptureWindow.cs`)
+  - Every second of capture also records voltage / current / watts / loaded into a `List<CaptureSample>`
+    (7200 entries ≈ 2 hours)
+  - The window buttons became two rows: "start / stop" + "close" on top, "copy summary" + "**export CSV**"
+    below (the window grows from 482 to 534 high)
+  - Saved to `Documents\CuktechTray\cuktech-capture-<port>-<yyyyMMdd-HHmmss>.csv`, UTF-8 **with BOM**
+    (without it Excel mangles the Chinese header), numbers always `InvariantCulture` (a comma decimal
+    separator would shift every column)
+  - Capture itself still writes nothing; a file only appears when you press "export CSV"
+- **Update check runs on startup** (`src/CuktechTrayAot/TrayApp.cs`)
+  - On by default, **8 seconds after launch** (let Bluetooth connect first): `CheckUpdatesOnStart`,
+    switchable from the menu
+  - New version found: a **red badge** on the tray icon's top-right corner (`WattIcon.DrawBadge`), the menu
+    entry becomes "检查更新…（有 0.5.5）" with a **small red dot** (`MenuEntry.DotItem` /
+    `MenuWindow.DrawDot`), plus one balloon
+  - The automatic check never blocks with a dialog: only pressing "检查更新…" yourself shows
+    "already the latest" or offers to replace now; if you're up to date the badge quietly disappears
+- **Taskbar number couldn't be moved right ([issue #7](https://github.com/Blank2007/cuktech-ultra-tray/issues/7))**
+  (`src/CuktechTrayAot/TaskbarWindow.cs`)
+  - Position is now a choice: **auto** (left of Start) / **centre** / **right** (left of the tray) /
+    **custom left offset**, stored in `TaskbarPlace` + `TaskbarLeftDip`
+  - Four sizes: small / medium / large / custom width (`TaskbarWidthDip`, 56..160 dip). The font scales with
+    the width (11 × width / 84), so widening never clips the text
+  - The real cause: after docking, the old code called SetWindowPos once without a z-order and then never
+    touched it again, so dragging it into the tray area put it behind `TrayNotifyWnd` — it looked like it
+    refused to move. Every re-layout now raises it to the front of its siblings
+  - `WM_CAPTURECHANGED` finishes the drag, so losing the capture no longer leaves it stuck "dragging"
+  - Custom numbers are typed into a new `src/CuktechTrayAot/NumberWindow.cs` (integers only, with bounds)
+- **No Bluetooth loop before pairing**: with an empty Mac, `DeviceClient` used to throw
+  `MAC 格式应为 AA:BB:CC:DD:EE:FF` every round, filling the log and holding the adapter; the loop only starts
+  once the wizard has paired the device (`TrayApp._clientStarted`)
+- **Two new self-check entry points** (`src/CuktechTrayAot/Program.cs`): `--probe-capture-csv` writes the
+  demo samples to a CSV to verify header and column count; `--render ... --render-demo` now also renders the
+  chart page (`tmp-demo-chart-*.png`)
+- `tools/check-ui.ps1` baselines were re-recorded (two chart images added, capture window now 360×534)
+- Version 0.5.3 → **0.5.4**
+
 ## 0.5.3 — 2026-11-26
 
 This one fixes a **click misalignment** in the device settings window, and pulls out the root cause of that whole class of bug.

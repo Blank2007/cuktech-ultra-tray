@@ -154,11 +154,14 @@ internal static class Program
             if (renderScale > 0f) probe.ForceScale(renderScale);
             if (Has(args, "--render-pinned")) probe.RestorePinned(true);
             string sizeTag = renderScale > 0f ? "-x" + renderScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace(".", "") : "";
+            // 曲线页要有点才画得出来：演示模式塞 180 个假点（不写盘，只活在内存里）
+            if (demo) PowerHistory.SeedDemo();
             foreach (var (tab, name) in new[]
             {
                 (PanelWindow.Tab.Read, "read"),
                 (PanelWindow.Tab.Control, "control"),
                 (PanelWindow.Tab.Mode, "mode"),
+                (PanelWindow.Tab.Chart, "chart"),
             })
             {
                 probe.SetTab(tab);
@@ -277,6 +280,26 @@ internal static class Program
             return 0;
         }
 
+        // 数值输入窗自查（0.5.4）：任务栏的「自定义左边距 / 自定义宽度」都弹它
+        if (Has(args, "--render-number"))
+        {
+            float ns = 1.25f;
+            foreach (var a in args)
+            {
+                if (!a.StartsWith("--render-scale=", StringComparison.OrdinalIgnoreCase)) continue;
+                if (float.TryParse(a.Substring("--render-scale=".Length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float v)) ns = v;
+            }
+            NumberWindow.RenderSample(OutFile(args, "tmp-number.png"),
+                "自定义左边距",
+                "从任务栏最左边算起（拖过就记成这个值）",
+                "dip", 0, 1900, 512,
+                "可以填 0 到 1900",
+                ns);
+            LogSink.Write("[probe] rendered number");
+            return 0;
+        }
+
         // 设备设置窗口排版自查（0.5.0）：不连蓝牙，用 Demo 数据把这一屏画成 PNG
         if (Has(args, "--render-settings"))
         {
@@ -310,6 +333,53 @@ internal static class Program
             return 0;
         }
 
+        // 任务栏数字摆位自查（0.5.4，issue #7）：PlaceX 是纯函数，跟字体无关，直接比表。
+        // 五个「机器」场景 × 四档位置 × 四档宽度，看每种组合算出来的左边距。
+        if (Has(args, "--probe-taskbar"))
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("tbW\tscale\tplace\twidthDip\tw\tgap\tstartLeft\ttrayLeft\tcustomDip\tx");
+
+            var scenes = new (int TbW, double Scale, int StartLeft, int StartRight, int TrayLeft)[]
+            {
+                (2560, 1.25, 583, 628, 1785),
+                (1920, 1.00, 437, 471, 1338),
+                (1920, 1.50, 656, 707, 1200),
+                (3840, 2.00, 875, 942, 2678),
+                (1920, 1.00, -1, -1, 1338),
+            };
+
+            var places = new[] { TaskbarPlace.Auto, TaskbarPlace.Center, TaskbarPlace.Right, TaskbarPlace.Custom };
+            var widths = new[] { 56, 84, 104, 160 };
+            var customs = new[] { 0.0, 512.0, 9999.0 };
+
+            foreach (var sc in scenes)
+            {
+                int gap = (int)Math.Round(8 * sc.Scale);
+                foreach (var place in places)
+                {
+                    foreach (int wdip in widths)
+                    {
+                        int w = (int)Math.Round(wdip * sc.Scale);
+                        foreach (double cdip in customs)
+                        {
+                            if (place != TaskbarPlace.Custom && cdip != 0.0) continue;
+                            int x = TaskbarWindow.PlaceX(place, sc.TbW, w, gap, sc.StartLeft, sc.StartRight,
+                                                         sc.TrayLeft, cdip, sc.Scale);
+                            sb.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
+                                "{0}\t{1:0.00}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8:0.0}\t{9}\n",
+                                sc.TbW, sc.Scale, TaskbarWindow.PlaceKey(place), wdip, w, gap, sc.StartLeft,
+                                sc.TrayLeft, cdip, x);
+                        }
+                    }
+                }
+            }
+
+            File.WriteAllText(OutFile(args, "tmp-taskbar.txt"), sb.ToString());
+            LogSink.Write("[probe] taskbar placement table written");
+            return 0;
+        }
+
         // 单口采集窗口排版自查（0.5.0）：完成态用真 CaptureAccumulator 喂 250 个假采样点
         if (Has(args, "--render-capture"))
         {
@@ -327,6 +397,19 @@ internal static class Program
             cwin.UseDemoData();
             cwin.SaveRender(OutFile(args, "tmp-capture.png"));
             LogSink.Write("[probe] rendered capture");
+            return 0;
+        }
+
+        // 单口采集 CSV 自查（0.5.x）：把演示数据的逐秒样本写成 CSV，核对表头与行数
+        if (Has(args, "--probe-capture-csv"))
+        {
+            var xclient = new DeviceClient(settings, null);
+            using var xwin = new CaptureWindow(xclient);
+            if (!xwin.IsValid) return 3;
+            xwin.ForceScale(1f);
+            xwin.UseDemoData();
+            xwin.WriteCsvProbe(OutFile(args, "tmp-capture.csv"));
+            LogSink.Write("[probe] capture csv written");
             return 0;
         }
 
@@ -404,6 +487,7 @@ internal static class Program
         waiter.Start();
 
         if (Has(args, "--menu-demo")) app.DemoMenu();
+        if (Has(args, "--menu-demo-taskbar")) app.DemoMenuTaskbar();
 
         // 直接把扫码向导弹出来（不走托盘菜单、不看配置是否完整）：
         // --wizard-demo 是自查用，--setup / --wizard 是兼容 0.3.3 的老参数习惯。

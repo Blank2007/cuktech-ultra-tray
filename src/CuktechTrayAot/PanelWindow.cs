@@ -25,6 +25,10 @@ internal sealed class PanelWindow : WinBase
     private const int RowTop = 176;
     private const int RowStep = 48;
     private const int FootY = 372;
+    // 曲线页（0.5.4 新增的第四个页签）：图表区上沿在副标题下面，下沿给图例和峰值/平均留两行
+    private const int ChartTop = 138;
+    private const int ChartBottom = 330;
+    private const int ChartAxisW = 30;      // 左边留给刻度数字（"160W" 这种）
 
     private static readonly Color BgTop = Color.FromArgb(34, 38, 45);
     private static readonly Color BgBottom = Color.FromArgb(20, 23, 28);
@@ -42,12 +46,13 @@ internal sealed class PanelWindow : WinBase
     private const string PinGlyph = "\uE718";
     private const string UnpinGlyph = "\uE77A";
 
-    public enum Tab { Read, Control, Mode }
+    public enum Tab { Read, Control, Mode, Chart }
 
     private enum StatusKind { None, Busy, Ok, Bad }
 
     private readonly DeviceClient _client;
     private readonly UiDispatcher _ui;
+    private readonly Settings _settings;
     private Snapshot _snap = new();
     private Tab _tab = Tab.Read;
 
@@ -60,6 +65,7 @@ internal sealed class PanelWindow : WinBase
     private string _status = "";
     private StatusKind _statusKind;
     private int _hoverTab = -1;
+    private bool _hoverSpan;
     private int _hoverSwitch = -1;
     private int _hoverMode = -1;
     private bool _pinHover;
@@ -93,6 +99,7 @@ internal sealed class PanelWindow : WinBase
     {
         _client = client;
         _ui = ui;
+        _settings = settings;
         LogSink.Write("[panel] 1 CreateWin");
         CreateWin(DesignW, DesignH, Native.WS_EX_TOOLWINDOW, Native.WS_POPUP,
             IntPtr.Zero, "panel");
@@ -236,10 +243,12 @@ internal sealed class PanelWindow : WinBase
         DrawTab(g, TabReadRect, "读数", _tab == Tab.Read, _hoverTab == 0);
         DrawTab(g, TabControlRect, "控制", _tab == Tab.Control, _hoverTab == 1);
         DrawTab(g, TabModeRect, "模式", _tab == Tab.Mode, _hoverTab == 2);
+        DrawTab(g, TabChartRect, "曲线", _tab == Tab.Chart, _hoverTab == 3);
 
         if (_tab == Tab.Read) PaintReadPage(g);
         else if (_tab == Tab.Control) PaintControlPage(g);
-        else PaintModePage(g);
+        else if (_tab == Tab.Mode) PaintModePage(g);
+        else PaintChartPage(g);
 
         var (footText, footColor) = FootStatus();
         Text(g, footText, _fFoot, footColor, pad, FootY * s, Width - pad * 2, 18 * s);
@@ -293,6 +302,172 @@ internal sealed class PanelWindow : WinBase
         Text(g, "点一下就切，充电器立刻换策略，不用再保存", _fFoot, Dim, pad, 100 * s, 262 * s, 18 * s);
         for (int i = 0; i < DeviceClient.SceneModes.Length; i++)
             DrawModeCard(g, ModeCardRect(i), i);
+    }
+
+    // ==================== 曲线页（0.5.4） ====================
+
+    /// <summary>四路各自的线色：蓝 / 绿 / 橙 / 紫。挑的是深色底上能互相区分、也不跟「绿=正常、红=报错」撞的色相。</summary>
+    private static readonly Color[] LineColors =
+    {
+        Color.FromArgb(59, 130, 246),
+        Color.FromArgb(34, 197, 94),
+        Color.FromArgb(245, 158, 11),
+        Color.FromArgb(167, 139, 250),
+    };
+
+    /// <summary>图例文字。第三路固定写 C3+A：合并时它就是一条线，分开时也只是这一路的曲线。</summary>
+    private static readonly string[] LineNames = { "C1", "C2", "C3+A", "A" };
+
+    /// <summary>点时长胶囊循环的四档（秒）。</summary>
+    internal static readonly int[] SpanChoices = { 60, 300, 900, 1800 };
+
+    internal int ChartSpan
+    {
+        get
+        {
+            int v = _settings.ChartSeconds;
+            return v >= 10 && v <= 1800 ? v : 60;
+        }
+    }
+
+    internal static string SpanLabel(int sec) => sec switch
+    {
+        60 => "最近 1 分钟",
+        300 => "最近 5 分钟",
+        900 => "最近 15 分钟",
+        1800 => "最近 30 分钟",
+        _ => "最近 " + sec + " 秒",
+    };
+
+    /// <summary>点一下时长胶囊：在四档预设里循环；当前是自定义值（菜单里填的）就回到最小那档。</summary>
+    private void CycleChartSpan()
+    {
+        int cur = ChartSpan;
+        int next = SpanChoices[0];
+        for (int i = 0; i < SpanChoices.Length; i++)
+        {
+            if (SpanChoices[i] == cur) { next = SpanChoices[(i + 1) % SpanChoices.Length]; break; }
+        }
+        SetChartSpan(next);
+    }
+
+    internal void SetChartSpan(int sec)
+    {
+        if (sec < 10 || sec > 1800) return;
+        _settings.ChartSeconds = sec;
+        _settings.Save();
+        Invalidate();
+    }
+
+    /// <summary>纵轴顶：20W 一档向上取整，最小 20W。固定 20 的倍数，刻度写出来是整数，看着不脏。</summary>
+    private static double NiceMax(double w)
+        => w <= 20 ? 20 : Math.Ceiling(w / 20.0) * 20;
+
+    private void PaintChartPage(Graphics g)
+    {
+        float s = Scale;
+        float pad = 16 * s;
+        int span = ChartSpan;
+
+        Text(g, "每路一条线，点右边换时长", _fFoot, Dim, pad, 100 * s, 176 * s, 18 * s);
+        var spanRect = ChartSpanRect;
+        using (var path = RoundRect(spanRect, 10 * s))
+        {
+            using (var b = new SolidBrush(_hoverSpan ? Color.FromArgb(38, 44, 54) : Color.FromArgb(26, 30, 36)))
+                g.FillPath(b, path);
+            using (var pen = new Pen(BorderColor, 1f)) g.DrawPath(pen, path);
+        }
+        Text(g, SpanLabel(span), _fFoot, Fg, spanRect.X, spanRect.Y, spanRect.Width, spanRect.Height, TextAnchor.Center);
+
+        int x0 = S(16 + ChartAxisW), x1 = S(DesignW - 16), y0 = S(ChartTop), y1 = S(ChartBottom);
+        var pts = PowerHistory.Snapshot(span);
+
+        double max = 0;
+        // 每一路自己在窗口里的峰值：整条都是 0 的那一路不画线（插着但没输出，画出来就是贴在 0 轴上的一条横线，
+        // 看着像坐标轴重了一条，其实一点信息都没有 —— 用户就是这么反馈的第一眼印象）
+        var peakEach = new double[4];
+        foreach (var p in pts)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                double w = p.At(i);
+                if (w > max) max = w;
+                if (w > peakEach[i]) peakEach[i] = w;
+            }
+        }
+        double top = NiceMax(max);
+
+        for (int k = 0; k <= 2; k++)
+        {
+            double v = top * k / 2.0;
+            int y = y1 - (int)((y1 - y0) * (v / top));
+            using (var pen = new Pen(k == 0 ? Color.FromArgb(52, 57, 66) : SepColor, 1f))
+                g.DrawLine(pen, x0, y, x1, y);
+            if (k > 0)
+                Text(g, ((int)Math.Round(v)) + "W", _fFoot, Faint, pad, y - S(9), S(ChartAxisW - 4), S(16), TextAnchor.Right);
+        }
+        Text(g, "0W", _fFoot, Faint, pad, y1 - S(9), S(ChartAxisW - 4), S(16), TextAnchor.Right);
+
+        if (pts.Count < 2)
+        {
+            Text(g, "数据还不够，等十几秒再看", _fFoot, Faint, x0, S((ChartTop + ChartBottom) / 2), x1 - x0, S(18), TextAnchor.Center);
+        }
+        else
+        {
+            double from = PowerHistory.Now - span;
+            var seg = new List<PointF>();
+            for (int i = 0; i < 4; i++)
+            {
+                if (peakEach[i] < 0.5) continue;   // 这一路整段都没输出，不画
+                seg.Clear();
+                using var pen = new Pen(LineColors[i], Math.Max(1f, 1.6f * s)) { LineJoin = LineJoin.Round };
+                void Flush()
+                {
+                    if (seg.Count >= 2) g.DrawLines(pen, seg.ToArray());
+                    else if (seg.Count == 1)
+                        using (var b = new SolidBrush(LineColors[i]))
+                            g.FillEllipse(b, seg[0].X - 1.5f * s, seg[0].Y - 1.5f * s, 3 * s, 3 * s);
+                    seg.Clear();
+                }
+                foreach (var p in pts)
+                {
+                    double w = p.At(i);
+                    if (w < 0) { Flush(); continue; }
+                    float x = x0 + (float)((p.T - from) / span * (x1 - x0));
+                    if (x < x0) x = x0;
+                    if (x > x1) x = x1;
+                    float y = y1 - (float)(Math.Min(w, top) / top * (y1 - y0));
+                    seg.Add(new PointF(x, y));
+                }
+                Flush();
+            }
+        }
+
+        // 图例：四个小方块 + 名字，一行排开
+        float lx = pad;
+        for (int i = 0; i < 4; i++)
+        {
+            var box = new Rectangle((int)lx, (int)(336 * s + 3 * s), S(10), S(10));
+            bool live = peakEach[i] >= 0.5;
+            FillRound(g, box, 2 * s, live ? LineColors[i] : Faint);
+            Text(g, LineNames[i], _fFoot, live ? Dim : Faint, lx + 14 * s, 334 * s, 52 * s, 16 * s);
+            lx += 62 * s;
+        }
+
+        if (pts.Count >= 2)
+        {
+            double peak = 0, sum = 0;
+            int n = 0;
+            foreach (var p in pts)
+            {
+                double w = Math.Max(0, p.At(0)) + Math.Max(0, p.At(1)) + Math.Max(0, p.At(2)) + Math.Max(0, p.At(3));
+                if (w > peak) peak = w;
+                sum += w;
+                n++;
+            }
+            Text(g, "峰值 " + WattStyle.Format(peak) + " W", _fFoot, Dim, pad, FootY * s - 18 * s, 132 * s, 16 * s);
+            Text(g, "平均 " + WattStyle.Format(n > 0 ? sum / n : 0) + " W", _fFoot, Dim, 150 * s, FootY * s - 18 * s, 138 * s, 16 * s);
+        }
     }
 
     private void DrawModeCard(Graphics g, Rectangle r, int index)
@@ -515,6 +690,18 @@ internal sealed class PanelWindow : WinBase
         }
     }
 
+    private Rectangle TabChartRect
+    {
+        get
+        {
+            var r = TabModeRect;
+            return new Rectangle(r.Right + S(TabGap), r.Y, r.Width, r.Height);
+        }
+    }
+
+    /// <summary>曲线页右上角那枚「最近 N 分钟」胶囊，点一下换一档。</summary>
+    private Rectangle ChartSpanRect => new(Width - S(16) - S(92), S(94), S(92), S(20));
+
     private Rectangle ModeCardRect(int i) => new(S(14), S(128 + i * 58), Width - S(28), S(50));
 
     private int ModeHit(int x, int y)
@@ -545,8 +732,10 @@ internal sealed class PanelWindow : WinBase
 
     protected override bool WantsHandCursor(int x, int y)
         => PinButtonRect.Contains(x, y)
-        || TabReadRect.Contains(x, y) || TabControlRect.Contains(x, y) || TabModeRect.Contains(x, y)
-        || SwitchHit(x, y) >= 0 || ModeHit(x, y) >= 0;
+        || TabReadRect.Contains(x, y) || TabControlRect.Contains(x, y)
+        || TabModeRect.Contains(x, y) || TabChartRect.Contains(x, y)
+        || SwitchHit(x, y) >= 0 || ModeHit(x, y) >= 0
+        || (_tab == Tab.Chart && ChartSpanRect.Contains(x, y));
 
     protected override void OnLeftDown(int x, int y)
     {
@@ -554,6 +743,8 @@ internal sealed class PanelWindow : WinBase
         if (TabReadRect.Contains(x, y)) { SetTab(Tab.Read); return; }
         if (TabControlRect.Contains(x, y)) { SetTab(Tab.Control); return; }
         if (TabModeRect.Contains(x, y)) { SetTab(Tab.Mode); return; }
+        if (TabChartRect.Contains(x, y)) { SetTab(Tab.Chart); return; }
+        if (_tab == Tab.Chart && ChartSpanRect.Contains(x, y)) { CycleChartSpan(); return; }
 
         int mode = ModeHit(x, y);
         if (mode >= 0) { _ = SetModeAsync(DeviceClient.SceneModes[mode].Value); return; }
@@ -577,7 +768,11 @@ internal sealed class PanelWindow : WinBase
 
         int tabHover = TabReadRect.Contains(x, y) ? 0
                      : TabControlRect.Contains(x, y) ? 1
-                     : TabModeRect.Contains(x, y) ? 2 : -1;
+                     : TabModeRect.Contains(x, y) ? 2
+                     : TabChartRect.Contains(x, y) ? 3 : -1;
+        bool spanHover = _tab == Tab.Chart && ChartSpanRect.Contains(x, y);
+        if (spanHover != _hoverSpan) changed = true;
+        _hoverSpan = spanHover;
         int swHover = SwitchHit(x, y);
         int modeHover = ModeHit(x, y);
         if (tabHover != _hoverTab || swHover != _hoverSwitch || modeHover != _hoverMode) changed = true;
@@ -599,10 +794,11 @@ internal sealed class PanelWindow : WinBase
 
     protected override void OnMouseLeave()
     {
-        if (_hoverTab == -1 && _hoverSwitch == -1 && _hoverMode == -1 && !_pinHover) return;
+        if (_hoverTab == -1 && _hoverSwitch == -1 && _hoverMode == -1 && !_pinHover && !_hoverSpan) return;
         _hoverTab = -1;
         _hoverSwitch = -1;
         _hoverMode = -1;
+        _hoverSpan = false;
         _pinHover = false;
         Invalidate();
     }
@@ -612,11 +808,17 @@ internal sealed class PanelWindow : WinBase
         if (vk == 0x1B) { HideNow("esc"); return; }  // ESC
         if (vk == 0x09)                              // TAB：循环切页
         {
-            SetTab(_tab switch { Tab.Read => Tab.Control, Tab.Control => Tab.Mode, _ => Tab.Read });
+            SetTab(_tab switch
+            {
+                Tab.Read => Tab.Control,
+                Tab.Control => Tab.Mode,
+                Tab.Mode => Tab.Chart,
+                _ => Tab.Read,
+            });
             return;
         }
-        // 1/2/3 直达三页，跟页签从左到右上顺序一致
-        if (vk >= 0x31 && vk <= 0x33) SetTab((Tab)(vk - 0x31));
+        // 1/2/3/4 直达四页，跟页签从左到右上顺序一致
+        if (vk >= 0x31 && vk <= 0x34) SetTab((Tab)(vk - 0x31));
     }
 
     protected override void OnActivate(bool active)
