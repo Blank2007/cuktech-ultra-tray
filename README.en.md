@@ -65,7 +65,7 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 | 🔌 **Self-healing** | Unplug it, walk out of Bluetooth range, switch system Bluetooth off — it reconnects on its own |
 | 📦 **Just one file** | A 10.4 MB self-contained exe: copy it to any writable folder and double-click. The same exe can also install itself — Start menu shortcut, uninstall entry, optional start with Windows — without a UAC prompt |
 | 🔄 **Updates itself** | **It checks 8 seconds after every launch** (so Bluetooth connects first; switchable in the menu): a new version puts a small red dot on the tray icon's top-right corner and turns the menu entry into "检查更新…（有 0.5.5）". One click on that entry downloads the new version, verifies its SHA256 against the release metadata and swaps the exe in place after a restart. The automatic check asks for a version number only and sends nothing about this machine |
-| 🪟 **Win11-style menu** | The context menu is a rounded, semi-transparent dark panel (acrylic) with Win11's item spacing; toggle items such as "Pin panel to desktop", "Show power on taskbar" and "Start with Windows" get a green check on the left while they are on, and an entry that has news carries a small red dot at its right end |
+| 🪟 **The menu is the system menu** | The right-click menu is a real Windows menu (`TrackPopupMenuEx`): light/dark colours, font, corner radius, hover highlight, which side submenus open on, Esc and the arrow keys, click-outside-to-close — all handed to the system; toggles get the system check mark and the radio rows get a dot. Before 0.5.6 it was a self-drawn menu whose submenu items could not be clicked, so the whole thing went native |
 | 🧹 **Clean** | No drivers, no runtime to install, no background service; the config is a single JSON file and logs rotate themselves |
 
 > **Want one ready-made?**
@@ -258,13 +258,15 @@ Tray menu -> "About". It shows the version, the project page, the tested firmwar
 
 Right-clicking the tray icon gets you this menu; a left-click just shows or hides the panel.
 
-![The tray menu: rounded and dark, green checks on the enabled items, the current total on the header line](docs/shot-menu-aot.png)
+![The tray menu: a native Windows menu with submenu arrows, checks on the enabled items and the current total on the status line](docs/shot-menu-aot.png)
 
 > 0.4.0 removed the "Icon style" entry (the icon only has one look now, see "Tray icon" below); every other entry is unchanged.
-> The menu is drawn by the program itself (the 0.4.x self-drawn menu, captured on a real desktop), not the system menu; the three panel screenshots above are also drawn by the program (`--render --render-demo`), not old screen captures.
+> This menu is the **system's own menu** (a real screen capture, shown in the light theme), not something the program draws; the three panel screenshots above are drawn by the program (`--render --render-demo`), not old screen captures.
+> Before 0.5.6 the menu was self-drawn and its submenu items did nothing when clicked (the menu just closed), which is why it went back to the system menu.
 
-* **It looks like Win11**: rounded corners, a rounded border, a semi-transparent background (acrylic blur), and the side padding and item spacing are matched to Win11's menu proportions
-* **On or off, visible at a glance**: whenever an item is an on / off toggle, an item that is on gets a green check on the left and an item that is off stays blank
+* **It behaves exactly like every other tray app you use**: colours, font, row height, corner radius, hover highlight, which way submenus open, Esc and the arrow keys, click-outside-to-close — all handled by Windows, nothing new to learn
+* **Submenus actually work**: charging mode / taskbar number / chart duration all expand and take effect as soon as you pick a row
+* **On or off, visible at a glance**: toggles carry the system check mark, and the one-of-many rows ("taskbar number") carry a dot
   — the old "Start with Windows" tick used to take a click to find out; now you just look
 * The "Connected · 36.8 W total" line is live numbers, and it reads "Not connected" when the charger is not attached
 * Theme changes don't matter: the background follows the system's light / dark setting, and the menu itself is drawn by the program
@@ -285,7 +287,7 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
   Show power on taskbar / Taskbar digits (position and size) / Chart span / Reset taskbar digits position / Reset panel position (back to the bottom-right corner) /
   Reconnect / Start with Windows / Re-pair device / Check for updates / About / Open log / Settings file / Install on this PC (Uninstall from this PC) / Quit
   Start with Windows / Open log / Settings file / Exit
-* In that menu, "Pin panel to desktop", "Always on top", "Show power on taskbar" and "Start with Windows" each show **a green check on the left while they are on** — no clicking in to guess
+* In that menu, "Pin panel to desktop", "Always on top" and "Start with Windows" each show **a check in front while they are on** — no clicking in to guess
 * "Pin panel to desktop" only stops the panel **auto-hiding**; switching to another app still pushes it behind. Tick "Always on top" when you want it to stay visible
 * The panel position lives in `PanelX` / `PanelY`; if it ever ends up off-screen (monitor swapped, scaling changed) the next start pulls it back into the monitor, and the menu has "Reset panel position" as a manual way out
 
@@ -321,7 +323,7 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
 | --- | --- |
 | `src/CuktechMible/` | Protocol core library: authentication, encrypted frames, MiOT TLV codec (UI-free, reusable on its own) |
 | `src/CuktechLogin/` | Xiaomi cloud QR-code login library: QR code → serviceToken → device list → 12-byte BLE token |
-| `src/CuktechTrayAot/` | The 0.4.0 NativeAOT build: Win32 + GDI+ self-drawn panel / taskbar strip / menu / tray icon, plus the installer and the updater |
+| `src/CuktechTrayAot/` | The 0.4.0 NativeAOT build: Win32 + GDI+ self-drawn panel / taskbar strip / tray icon, the native context menu, plus the installer and the updater |
 | `src/CuktechTray/` | The 0.3.3 WinForms shell, kept as an archive (first-run wizard, panel, taskbar widget); the AOT build shares its protocol, data, settings and self-test sources |
 | `setup/` | The old installer source (a WinForms wizard wrapping the main program) — history since 0.4.0 |
 | `src/probe-cs/` | Command-line probe: `scan` / `diag` / `info` / `probe`, for protocol debugging |
@@ -343,7 +345,7 @@ The icon is a status badge, not a gauge: a rounded square with a white lightning
    summed for display. The full PIID table and the power byte layout are in that same document
 3. **Control**: the port switch is a bit mask, and the value is read back and verified after every write ([docs/control-protocol.md](docs/control-protocol.md))
 4. **Login**: scanning follows the Mi Home app's QR-code login flow; once a serviceToken is obtained, the device-list API is called to fetch the token
-5. **Windows**: since 0.4.0 the panel (both tabs included) is plain Win32 + GDI+, drawn by hand with no UI framework at all; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
+5. **Windows**: since 0.4.0 the panel (all four tabs) is plain Win32 + GDI+, drawn by hand with no UI framework at all, while the context menu is the system menu; the taskbar strip is a window `SetParent`-ed under the taskbar's child window
    (the same trick as AF-Media-Bar), with details and the risk list in [docs/taskbar-component.md](docs/taskbar-component.md)
 
 ---
@@ -451,7 +453,7 @@ This program touches exactly two things: **the credentials of this one charger i
 | Component | Purpose | License |
 | --- | --- | --- |
 | .NET 8 / NativeAOT (ILCompiler) | Ahead-of-time compilation, and the tiny footprint | MIT |
-| System.Drawing.Common | GDI+ drawing of the self-drawn UI | MIT |
+| System.Drawing.Common | GDI+ drawing of the panel / taskbar strip / tray icon | MIT |
 | System.Text.Json (BCL) | Config file and API parsing | MIT |
 | .NET 8 / Windows Forms | The archived 0.3.3 build only | MIT |
 | Apart from that: none — no third-party installer framework any more | — | — |

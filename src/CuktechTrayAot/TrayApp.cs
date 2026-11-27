@@ -436,7 +436,7 @@ internal sealed class TrayApp : WinBase
                 // 截图/视频要的是「已连接 · 总 6.0 W」那一行，跟面板渲染图同一组数；
                 // 演示模式没有真设备，所以直接借 SetStatus 的临时状态行（10 分钟足够截图）。
                 SetStatus("已连接 · 总 6.0 W", 600);
-                MenuWindow.Show(BuildMenu(), 200, 200);
+                NativeMenu.Show(Hwnd, BuildMenu(), 200, 200);
                 LogSink.Write("[menu] demo shown");
             }, null);
         });
@@ -451,7 +451,7 @@ internal sealed class TrayApp : WinBase
             _ui.Post(_ =>
             {
                 SetStatus("已连接 · 总 6.0 W", 600);
-                MenuWindow.Show(TaskbarItems(), 200, 140);
+                NativeMenu.Show(Hwnd, TaskbarItems(), 200, 140);
                 LogSink.Write("[menu] taskbar demo shown");
             }, null);
         });
@@ -460,7 +460,7 @@ internal sealed class TrayApp : WinBase
     private void ShowTrayMenu()
     {
         if (!Native.GetCursorPos(out var pt)) return;
-        MenuWindow.Show(BuildMenu(), pt.X, pt.Y);
+        NativeMenu.Show(Hwnd, BuildMenu(), pt.X, pt.Y);
     }
 
     private MenuEntry[] BuildMenu()
@@ -554,7 +554,7 @@ internal sealed class TrayApp : WinBase
 
     /// <summary>
     /// 任务栏数字那一摊的菜单（0.5.4，issue #7）：开关、四档位置、四档大小、两处自定义、状态行、重置。
-    /// MenuWindow 只支持一层子菜单，所以这里全部压平成一行一行的单选。
+    /// 系统菜单也只支持一层子菜单，所以这里全部压平成一行一行的单选。
     /// </summary>
     private MenuEntry[] TaskbarItems()
     {

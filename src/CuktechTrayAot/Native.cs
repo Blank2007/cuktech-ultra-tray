@@ -566,6 +566,65 @@ internal static class Native
     internal const uint CLEARTYPE_QUALITY = 5;
     internal const uint CLEARTYPE_NATURAL_QUALITY = 6;
 
+    // ---- 系统菜单（0.5.6 起右键菜单交给 user32 自己弹，不再自绘）----
+    internal const uint WM_NULL = 0x0000;
+
+    internal const uint MF_STRING = 0x00000000;
+    internal const uint MF_POPUP = 0x00000010;
+    internal const uint MF_SEPARATOR = 0x00000800;
+    internal const uint MF_CHECKED = 0x00000008;
+    internal const uint MF_DISABLED = 0x00000002;
+    internal const uint MF_GRAYED = 0x00000001;
+
+    internal const uint TPM_RIGHTBUTTON = 0x0002;
+    internal const uint TPM_NONOTIFY = 0x0080;
+    internal const uint TPM_RETURNCMD = 0x0100;
+
+    internal const uint MIM_STYLE = 0x00000010;
+    internal const uint MNS_RADIOCHECK = 0x00000200;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MENUINFO
+    {
+        public int cbSize;
+        public uint fMask;
+        public uint dwStyle;
+        public uint cyMax;
+        public IntPtr hbrBack;
+        public uint dwContextHelpID;
+        public IntPtr dwMenuData;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern IntPtr CreatePopupMenu();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool DestroyMenu(IntPtr hMenu);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool AppendMenuW(IntPtr hMenu, uint uFlags, UIntPtr uIDNewItem, string? lpNewItem);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern int TrackPopupMenuEx(IntPtr hMenu, uint uFlags, int x, int y, IntPtr hwnd, IntPtr lptpm);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool SetMenuDefaultItem(IntPtr hMenu, uint uItem, uint fByPos);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool SetMenuInfo(IntPtr hMenu, ref MENUINFO mii);
+
+    /// <summary>把整个子菜单切成「单选组」：被选中的项画圆点而不是对勾。</summary>
+    internal static void SetRadioCheck(IntPtr menu, bool on)
+    {
+        var mi = new MENUINFO
+        {
+            cbSize = Marshal.SizeOf<MENUINFO>(),
+            fMask = MIM_STYLE,
+            dwStyle = on ? MNS_RADIOCHECK : 0,
+        };
+        SetMenuInfo(menu, ref mi);
+    }
+
     // ---- 常用封装 ----
     internal static int LoWord(IntPtr value) => unchecked((short)(long)value);
     internal static int HiWord(IntPtr value) => unchecked((short)((long)value >> 16));

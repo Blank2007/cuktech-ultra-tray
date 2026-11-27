@@ -138,15 +138,20 @@ internal sealed class Settings
             try
             {
                 var s = JsonSerializer.Deserialize(File.ReadAllText(FilePath), SettingsJsonContext.Default.Settings);
-                if (s is not null && s.IsComplete)
+                if (s is not null)
                 {
+                    // 没配好（缺 MAC / token）时不要再把整份配置丢掉重来：
+                    // 丢掉等于「同意过的隐私说明、拖好的任务栏位置、曲线时长」全忘掉，
+                    // 下次启动又弹一遍同意门。这里只补登录信息，别的一律留着。
+                    if (!s.IsComplete) s.ImportFromTokenResult();
+
                     // v1：常驻面板不再等于「总在最前」。旧配置里那个 true 是程序自己写的，不是用户选的。
                     // v2：修「锁屏后回来面板偶尔还压在最上面」——把历史遗留的置顶标志再清一次，
                     //     真想要置顶在面板右键菜单里重新勾一次即可（默认就是关的）。
-                    if (s.ConfigVersion < CurrentConfigVersion)
+                    if (s.ConfigVersion < CurrentConfigVersion || !s.IsComplete)
                     {
                         s.ConfigVersion = CurrentConfigVersion;
-                                    s.Save();
+                        s.Save();
                     }
                     return s;
                 }

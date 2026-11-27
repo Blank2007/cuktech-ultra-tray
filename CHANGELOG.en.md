@@ -4,6 +4,33 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## 0.5.6 — 2026-11-27
+
+Two things only: **the context menu went back to being a real Windows menu** (the self-drawn one had
+submenu items that could not be clicked), and **an incomplete config no longer throws the whole file away**.
+
+- **Fixed "submenu items do nothing"** (`src/CuktechTrayAot/MenuWindow.cs` deleted, `NativeMenu.cs` added)
+  - Root cause: the self-drawn menu let the root menu hold the mouse capture for its submenus, but `WinBase`
+    releases capture unconditionally on `WM_LBUTTONUP`. The moment you let go, capture was gone; mouse
+    messages then went to the submenu window, whose `OnLeftDown` / `OnMouseMove` start with
+    `if (!IsRoot) return;` — so no submenu row ever reacted, and "click outside to close" broke too
+  - Replaced with the system menu: `CreatePopupMenu` builds the tree, `TrackPopupMenuEx(TPM_RETURNCMD)`
+    returns the chosen id in one call, and callbacks run by id. Submenu expansion, keyboard, Esc,
+    click-outside, high DPI and accessibility all belong to user32, so it looks and behaves like every
+    other tray app (the reference was the native menu TranslucentTB uses)
+  - The entries are the same `MenuEntry` set: `MF_CHECKED` for toggles, `MNS_RADIOCHECK` dots for
+    one-of-many rows, `MF_GRAYED` for disabled rows, a leading "● " on the row that has news, and the
+    bold "显示功率面板" row is still the default item
+- **An incomplete config is no longer discarded** (`src/CuktechTray/Settings.cs`)
+  - `Load()` used to return the file contents only when `IsComplete` (MAC + token present) was true and
+    otherwise started from `new Settings()`: that forgot the accepted privacy notice, the dragged taskbar
+    position, the chart duration and the update-check switch, so the consent gate popped up again on the
+    next launch. Now only the login fields are refilled; everything else survives
+  - It also explains why `--menu-demo` kept hitting the consent gate on the dev machine
+- Docs: the menu section, the feature row, the architecture note and the dependency table in both
+  READMEs now say "system menu"; `docs/shot-menu-aot.png` was replaced with a real screen capture of the
+  native menu (light theme)
+- Version 0.5.5 → **0.5.6**
 ## 0.5.5 — 2026-11-27
 
 On the Windows side this version only touches one sentence — **the privacy notice now matches what the
