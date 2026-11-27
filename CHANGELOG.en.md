@@ -4,6 +4,31 @@ This project first ran on just one of my own machines and was later put on GitHu
 what follows is organized by "what was done" rather than by release; the version numbers just
 kept climbing so they line up with the file versions inside the installers.
 
+## macOS 0.1.9 — 2026-11-28
+
+The macOS panel goes from one long page to **four tabs**, matching the Windows layout; the chart tab picks up the
+"you can see which port is delivering" work from Windows 0.5.7.
+
+- **Four tabs** (`mac/Sources/CuktechTray/PanelView.swift`)
+  - **Readings**: voltage / current / watts per port, with the single-port capture button on the right of each row
+  - **Control**: one switch per port (these used to share a row with the readings; now each has its own row)
+  - **Modes**: AI / Digital ecosystem / Single port / Balanced, current one ticked with a green border
+  - **Chart**: new page (below)
+  - Tab order and every subtitle match the Windows panel, so screenshots of the two can be compared side by side
+- **Chart tab** (new file `mac/Sources/CuktechCore/PowerHistory.swift`)
+  - One line per port: C1 blue / C2 green / C3 orange / A purple; when C3 and A report a merged meter that line is **C3+A**, plain **C3** otherwise
+  - **The subtitle names the delivering ports** ("在输出：C3", "在输出：C1、C3"); with nothing delivering it falls back to "one line per port, click the right side to change the span"
+  - **Each line end carries its port name**, in the line's own colour, kept at least 13pt apart and flipped to the left of the point near the right edge, on a translucent plate so the line passing underneath stays readable
+  - Ports that never delivered are only dimmed in the legend — no line, so the 0 W axis does not grow a fake horizontal rule
+  - Four spans: tap the capsule in the top right to cycle **1 / 5 / 15 / 30 minutes**, stored as `chartSeconds` in `config.json` (missing key = 60 s)
+  - History lives **in memory only**: 1 Hz × 30 minutes = 1800 points capped (about 72 KB), oldest dropped first, gone when the app quits. For data you want to keep, use single-port capture (CSV export)
+  - A port that is unplugged, not answering, or merged away records **-1** and the line **breaks** there instead of drawing a straight line that turns "cable pulled" into "a smooth ramp down"
+- New tests `mac/Tests/CuktechCoreTests/PowerHistoryTests.swift`: throttling (two samples closer than 0.4 s keep one),
+  clock going backwards clears the buffer, -1 breaks (including the merged passenger port), 1800-point capacity,
+  window selection, demo data
+- Screenshot self-check: `--panel-demo=read|control|mode|chart|chart-solo` puts one page in a plain window (synthetic data, no Bluetooth); CI captures `panel-*.png` artifacts
+- Version 0.1.8 -> **0.1.9**
+
 ## 0.5.7 — 2026-11-28
 
 The chart tab now answers "C3 is the only port delivering — how do I see that on the curve".

@@ -49,8 +49,8 @@ final class PowerHistoryTests: XCTestCase {
         let pts = h.snapshot(60, at: 103)
         XCTAssertEqual(pts.count, 3)
         XCTAssertEqual(pts[0].at(0), -1)
-        XCTAssertEqual(pts[1].at(2), 9.0, accuracy: 0.001)
-        // C3 合并时 A 是搭车的那一路，得记断点
+        // 第三拍是 C3 带合并标记的那一路，A 是搭车的那一路
+        XCTAssertEqual(pts[2].at(2), 9.0, accuracy: 0.001)
         XCTAssertEqual(pts[2].at(3), -1)
     }
 
@@ -81,7 +81,8 @@ final class PowerHistoryTests: XCTestCase {
     /// solo 模式下第三路有值、第四路是断点。
     func testDemo() {
         let h = PowerHistory.demo(c3Only: false)
-        XCTAssertEqual(h.count, 180)
+        // 180 秒的历史 = 首尾各一个点，共 181 个
+        XCTAssertEqual(h.count, 181)
         let pts = h.snapshot(3600, at: PowerHistory.now)
         XCTAssertTrue(pts.contains { $0.at(0) > 20 })
         let solo = PowerHistory.demo(c3Only: true)

@@ -55,12 +55,13 @@ public struct PowerHistory: Sendable {
 
     /// 显式给时间戳的版本：单元测试用，也方便演示数据对齐。
     public mutating func add(_ snap: DeviceSnapshot, at t: Double) {
-        if lastT > -.infinity && t - lastT < Self.minStep { return }
+        // 先处理时钟回退再节流：回退时 t - lastT 是负数，落在 minStep 那一侧，
+        // 顺序反了的话这一拍会被当成「来得太快」直接丢掉，曲线就停在旧数据上不更新了。
         if t < lastT {
-            // 时钟回退（极端情况：容器迁移、系统 bug）就当重来
             points.removeAll(keepingCapacity: true)
             lastT = -.infinity
         }
+        if lastT > -.infinity && t - lastT < Self.minStep { return }
         points.append(PowerPoint(t: t, watts: [
             Self.value(snap, 0),
             Self.value(snap, 1),
