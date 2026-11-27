@@ -37,7 +37,7 @@ macOS 升到 **0.1.8**：采集结果能**导出 CSV**、启动时**自己查一
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.5-win.exe` | **11,152,384 字节（10.64 MiB）** | Windows：绿色版 + 安装器二合一 |
-| `CuktechTray-0.1.8-mac.zip` | 待 CI 打出来（这份 tag 上会跑一次） | macOS：导出 CSV + 启动自查更新 |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,255 字节（1.55 MiB）** | macOS：导出 CSV + 启动自查更新（解出来是 `CuktechTray.app`） |
 
 ## 校验
 
@@ -46,6 +46,10 @@ macOS 升到 **0.1.8**：采集结果能**导出 CSV**、启动时**自己查一
 大小   11,152,384 字节
 版本   0.5.5.0
 SHA256 CB814463EF42D0C240C5348E8FD0AE5B34EE02BA7390267541B16209DE71D575
+
+文件   CuktechTray-0.1.8-mac.zip     （由 CI 打包，解出来是 CuktechTray.app）
+大小   1,623,255 字节
+SHA256 4CB3BA64C7421E530E4CD4C58FAD8DD08A40D32CF9F00941BA2CE0C57F3EA1AA
 ```
 
 Windows 上用 `Get-FileHash .\CuktechTray-0.5.5-win.exe -Algorithm SHA256` 对着看。

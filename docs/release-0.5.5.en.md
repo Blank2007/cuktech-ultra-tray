@@ -42,7 +42,7 @@ results **export to CSV**, and the app **checks for updates on launch** and mark
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.5-win.exe` | **11,152,384 bytes (10.64 MiB)** | Windows: portable + installer in one |
-| `CuktechTray-0.1.8-mac.zip` | built by CI on this tag | macOS: CSV export + update check on launch |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,255 bytes (1.55 MiB)** | macOS: CSV export + update check on launch (unpacks to `CuktechTray.app`) |
 
 ## Verify
 
@@ -51,6 +51,10 @@ file   CuktechTray-0.5.5-win.exe   (the local build is called CuktechTray.exe, s
 size   11,152,384 bytes
 ver    0.5.5.0
 SHA256 CB814463EF42D0C240C5348E8FD0AE5B34EE02BA7390267541B16209DE71D575
+
+file   CuktechTray-0.1.8-mac.zip     (built by CI, unpacks to CuktechTray.app)
+size   1,623,255 bytes
+SHA256 4CB3BA64C7421E530E4CD4C58FAD8DD08A40D32CF9F00941BA2CE0C57F3EA1AA
 ```
 
 ## Requirements
