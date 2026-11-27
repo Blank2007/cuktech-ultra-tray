@@ -52,7 +52,7 @@ Also fixed a bug of my own making: when the clock jumps backwards (sleep, time s
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.8-win.exe` | **10.6 MB** (11,151,360 bytes) | Windows: portable + installer in one (same code as 0.5.7, version bumped) |
-| `CuktechTray-0.1.9-mac.zip` | **PENDING** | macOS: four-tab panel and the chart |
+| `CuktechTray-0.1.9-mac.zip` | **1.7 MB** (1,716,737 bytes) | macOS: four-tab panel and the chart (unzips to `CuktechTray.app`) |
 
 ## Checksums
 
@@ -63,8 +63,8 @@ version 0.5.8.0
 sha256  AA7FD194F2B98EDD78815FEE3D0B4A00349052D65835A23CC3DB80B469BB65B0
 
 file    CuktechTray-0.1.9-mac.zip     (packed by CI, unzips to CuktechTray.app)
-size    PENDING
-sha256  PENDING
+size    1,716,737 bytes
+sha256  A09C85EACFA2BE47C3E115911D4947A89B52AC73D266D15366A09DA5D5541CA3
 ```
 
 ## Requirements

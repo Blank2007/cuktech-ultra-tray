@@ -50,7 +50,7 @@ downloaded as: after a few update checks the binary was 0.5.x while the file sti
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.9-win.exe` | **10.7 MB** (11,197,440 bytes) | Windows: portable build and installer in one file |
-| `CuktechTray-0.1.9-mac.zip` | **PENDING** | macOS: same as the 0.5.8 release (0.1.9 sources unchanged) |
+| `CuktechTray-0.1.9-mac.zip` | **1.7 MB** (1,716,737 bytes) | macOS: literally the same file as in the 0.5.8 release (0.1.9 sources unchanged) |
 
 ## Checksums
 
@@ -60,9 +60,9 @@ size   11,197,440 bytes
 ver    0.5.9.0
 SHA256 6F94829BE572CC7DE88FBFE458C8757D17C94D7DE9F8930CB6786C31449DB60C
 
-file   CuktechTray-0.1.9-mac.zip     (packed by CI, unzips to CuktechTray.app)
-size   PENDING
-SHA256 PENDING
+file   CuktechTray-0.1.9-mac.zip     (unzips to CuktechTray.app)
+size   1,716,737 bytes
+SHA256 A09C85EACFA2BE47C3E115911D4947A89B52AC73D266D15366A09DA5D5541CA3
 ```
 
 ## Requirements

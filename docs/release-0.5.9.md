@@ -46,7 +46,7 @@ macOS 侧这次没有代码改动，仍是 0.1.9。
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.9-win.exe` | **10.7 MB**（11,197,440 字节） | Windows：绿色版 + 安装器二合一 |
-| `CuktechTray-0.1.9-mac.zip` | **PENDING** | macOS：与 0.5.8 那版相同（0.1.9 源码未改） |
+| `CuktechTray-0.1.9-mac.zip` | **1.7 MB**（1,716,737 字节） | macOS：与 0.5.8 那版是同一个文件（0.1.9 源码未改） |
 
 ## 校验
 
@@ -56,9 +56,9 @@ macOS 侧这次没有代码改动，仍是 0.1.9。
 版本   0.5.9.0
 SHA256 6F94829BE572CC7DE88FBFE458C8757D17C94D7DE9F8930CB6786C31449DB60C
 
-文件   CuktechTray-0.1.9-mac.zip     （由 CI 打包，解出来是 CuktechTray.app）
-大小   PENDING
-SHA256 PENDING
+文件   CuktechTray-0.1.9-mac.zip     （解出来是 CuktechTray.app）
+大小   1,716,737 字节
+SHA256 A09C85EACFA2BE47C3E115911D4947A89B52AC73D266D15366A09DA5D5541CA3
 ```
 
 ## 系统要求
