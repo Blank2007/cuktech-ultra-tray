@@ -58,7 +58,9 @@ and the "I can't move the taskbar number to the right" report from
 - **Two new self-check entry points** (`src/CuktechTrayAot/Program.cs`): `--probe-capture-csv` writes the
   demo samples to a CSV to verify header and column count; `--render ... --render-demo` now also renders the
   chart page (`tmp-demo-chart-*.png`)
-- `tools/check-ui.ps1` baselines were re-recorded (two chart images added, capture window now 360×534)
+- `tools/check-ui.ps1` baselines were re-recorded (two chart images added, capture window now 360×534);
+  the chart page is compared by size only, not by pixel hash — its footer carries a live "updated hh:mm:ss" and its
+  points come from the clock, so two renders are genuinely different images
 - Version 0.5.3 → **0.5.4**
 
 ## 0.5.3 — 2026-11-26

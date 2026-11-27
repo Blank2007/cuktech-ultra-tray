@@ -143,6 +143,11 @@ $tabChar = [char]9
 
 $actualHits = ((@(Get-Content -Path $hitsPath)) -join $nlChar) + $nlChar
 $actualTaskbar = ((@(Get-Content -Path $taskbarPath)) -join $nlChar) + $nlChar
+# The chart page carries a live "updated hh:mm:ss" footer and its points come from a demo series
+# that is seeded from the clock, so two renders a minute apart are genuinely different images.
+# Size is still checked for it; the pixel hash is not.
+$hashExempt = @("tmp-demo-chart-x125.png", "tmp-demo-merged-chart-x125.png")
+
 $actualRenders = New-Object System.Collections.Generic.List[string]
 foreach ($s in $shots) {
     $wh = Get-PngSize $s.FullName
@@ -217,7 +222,7 @@ foreach ($s in $shots) {
     if ($size -ne $wantRenders[$s.Name].size) {
         $problems.Add($s.Name + " size " + $wantRenders[$s.Name].size + " -> " + $size)
     }
-    elseif ($StrictHash) {
+    elseif ($StrictHash -and ($hashExempt -notcontains $s.Name)) {
         $hash = Get-Sha256 $s.FullName
         if ($hash -ne $wantRenders[$s.Name].hash) {
             $problems.Add($s.Name + " pixels changed (" + $wantRenders[$s.Name].hash.Substring(0, 12) + " -> " + $hash.Substring(0, 12) + ")")

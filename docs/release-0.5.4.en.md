@@ -1,4 +1,4 @@
-# 0.5.4 — chart, CSV export, and "the taskbar digits won't move right"
+# 0.5.4 — chart tab, CSV export, quiet update check
 
 > Release body draft (English). Chinese: [release-0.5.4.md](release-0.5.4.md).
 
@@ -70,6 +70,7 @@ are menu choices now.
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.4-win.exe` | **11,152,384 bytes (10.64 MiB)** | Windows: portable build and installer in one |
+| `CuktechTray-0.1.7-mac.zip` | built by CI on this tag | macOS: unchanged this time, still 0.1.7; no need to update if you have it |
 
 ## Verification
 

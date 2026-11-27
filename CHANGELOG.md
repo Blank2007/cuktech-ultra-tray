@@ -41,7 +41,8 @@
   `MAC 格式应为 AA:BB:CC:DD:EE:FF` 刷一屏日志、还白占着适配器；现在等向导配对完成才第一次启动（`TrayApp._clientStarted`）
 - **两处自查入口**（`src/CuktechTrayAot/Program.cs`）：`--probe-capture-csv` 把演示数据的逐秒样本写成 CSV 核表头与列数；
   `--render ... --render-demo` 现在会连曲线页一起出图（`tmp-demo-chart-*.png`）
-- `tools/check-ui.ps1` 的基线重录了一遍（多了曲线页那两张图，采集窗口也因为按钮改两排从 360×482 变 360×534）
+- `tools/check-ui.ps1` 的基线重录了一遍（多了曲线页那两张图，采集窗口也因为按钮改两排从 360×482 变 360×534）；
+  曲线页只比尺寸、不比像素哈希——它的页脚带「更新 hh:mm:ss」，曲线上的点也按当前时钟生成，两次渲染必然不同
 - 版本 0.5.3 → **0.5.4**
 
 ## 0.5.3 — 2026-11-26

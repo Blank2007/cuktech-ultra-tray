@@ -122,6 +122,8 @@ WinForms 壳当作 0.3.3 的归档，不再跟进（共性代码除外）。
    本地发版用 `-StrictHash`（含像素哈希）；CI 的 `.github/workflows/windows.yml` 只比命中矩形与图尺寸——
    runner 上不一定有「Microsoft YaHei UI」，字体一变像素就变，尺寸是字体无关的。
    **改了排版/命中区就要重新录基线**：`tools\check-ui.ps1 -UpdateBaseline`，并把两个基线文件一起提交。
+   曲线页（`tmp-demo-chart-x125.png` / `tmp-demo-merged-chart-x125.png`）**不参与像素哈希**：它的页脚带「更新 hh:mm:ss」，
+   曲线上的点也是按当前时钟生成的，两次渲染必然不同；这两张只比尺寸。
 4. 取真实值：`(Get-Item dist\CuktechTray.exe).Length` 与 `Get-FileHash -Algorithm SHA256`，Release 正文里的字节数和哈希必须是实测的。
 5. 写两处文档：`CHANGELOG.md` / `CHANGELOG.en.md` 顶部加一节；`docs/release-<版本>.md` 与 `docs/release-<版本>.en.md` 写 Release 正文草稿
    （结构：一句话 / 这次改了什么按版本倒序 / 怎么升级 / 文件 / 校验 / 系统要求 / 已知）。
