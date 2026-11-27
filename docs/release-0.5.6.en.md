@@ -45,7 +45,7 @@ app forget the whole settings.json". macOS unchanged, still 0.1.8.
 | File | Size | Notes |
 | --- | --- | --- |
 | `CuktechTray-0.5.6-win.exe` | **11,137,536 字节（10.62 MiB）** | Windows: portable app + installer in one file |
-| `CuktechTray-0.1.8-mac.zip` | **__MACSIZE__** | macOS: still 0.1.8 (unchanged this time) |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,251 字节** | macOS: still 0.1.8 (unchanged this time) |
 
 ## Checksums
 
@@ -56,8 +56,8 @@ ver    0.5.6.0
 sha256 C7C58523566CA954BFFB5C6B3566896D3201E39EE9C74EC3AF58422BBC555DEF
 
 file   CuktechTray-0.1.8-mac.zip     (packed by CI; unzips to CuktechTray.app)
-size   __MACSIZE__
-sha256 __MACHASH__
+size   1,623,251 字节
+sha256 BEDD82CE0C5EB5263B0A666CEF9BFEBE47D02DC7608E7B3BE53ABE4543AF7206
 ```
 ## Requirements
 

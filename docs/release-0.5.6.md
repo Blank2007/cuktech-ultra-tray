@@ -40,7 +40,7 @@
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.6-win.exe` | **11,137,536 字节（10.62 MiB）** | Windows：绿色版 + 安装器二合一 |
-| `CuktechTray-0.1.8-mac.zip` | **__MACSIZE__** | macOS：仍是 0.1.8（这次没改动） |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,251 字节** | macOS：仍是 0.1.8（这次没改动） |
 
 ## 校验
 
@@ -51,8 +51,8 @@
 SHA256 C7C58523566CA954BFFB5C6B3566896D3201E39EE9C74EC3AF58422BBC555DEF
 
 文件   CuktechTray-0.1.8-mac.zip     （由 CI 打包，解出来是 CuktechTray.app）
-大小   __MACSIZE__
-SHA256 __MACHASH__
+大小   1,623,251 字节
+SHA256 BEDD82CE0C5EB5263B0A666CEF9BFEBE47D02DC7608E7B3BE53ABE4543AF7206
 ```
 ## 系统要求
 
