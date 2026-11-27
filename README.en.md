@@ -203,7 +203,6 @@ The panel's fourth tab answers "what did the last few minutes look like":
 * **Which port is actually delivering is obvious at a glance**: the subtitle names them ("delivering: C3"), the
   ports that never showed up are dimmed in the legend, and each line is labelled with its port name right at
   its end — with a single port you never have to match a colour back to the legend
-  ![Chart tab with only C3 delivering](docs/shot-chart-solo.png)
 * The pill in the top right cycles the span: **1 minute → 5 → 15 → 30 → back to 1**; also under the right-click
   menu entry "Chart span", stored as `ChartSeconds` in `settings.json`
 * The vertical axis picks a round top in 20 W steps (a 65 W laptop does not flatten the phone's line onto the
@@ -215,6 +214,8 @@ The panel's fourth tab answers "what did the last few minutes look like":
   (its legend entry is dimmed), which stops an all-zero port from adding a line that looks like an axis
 * Samples closer than 0.4 s apart are skipped: the device sometimes pushes twice in a row and that would only
   add duplicate points
+
+![Chart tab with only C3 delivering](docs/shot-chart-solo.png)
 
 ### Device settings
 

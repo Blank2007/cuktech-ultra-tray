@@ -38,7 +38,7 @@ macOS 这次没改动，仍是 0.1.8。
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
 | `CuktechTray-0.5.7-win.exe` | **11,151,360 字节（10.63 MiB）** | Windows：绿色版 + 安装器二合一 |
-| `CuktechTray-0.1.8-mac.zip` | **PENDING** | macOS：仍是 0.1.8（这次没改动） |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,257 字节（1.55 MiB）** | macOS：仍是 0.1.8（这次没改动） |
 
 ## 校验
 
@@ -49,8 +49,8 @@ macOS 这次没改动，仍是 0.1.8。
 SHA256 55768A358130A68B8EA59AD5D15B815AD7E3B9234653CD5AFBE790DD1611A40C
 
 文件   CuktechTray-0.1.8-mac.zip     （由 CI 打包，解出来是 CuktechTray.app）
-大小   PENDING
-SHA256 PENDING
+大小   1,623,257 字节
+SHA256 25E4258DB233E74D227CBC472774133850B447DD234E6FB7B0330727F943C215
 ```
 
 ## 系统要求

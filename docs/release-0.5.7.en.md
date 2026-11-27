@@ -39,20 +39,20 @@ Three changes together:
 
 | File | Size | Notes |
 | --- | --- | --- |
-| `CuktechTray-0.5.7-win.exe` | **PENDING** | Windows: portable + installer in one |
-| `CuktechTray-0.1.8-mac.zip` | **PENDING** | macOS: still 0.1.8 (unchanged) |
+| `CuktechTray-0.5.7-win.exe` | **11,151,360 bytes (10.63 MiB)** | Windows: portable + installer in one |
+| `CuktechTray-0.1.8-mac.zip` | **1,623,257 bytes (1.55 MiB)** | macOS: still 0.1.8 (unchanged) |
 
 ## Checksums
 
 ```
 file   CuktechTray-0.5.7-win.exe   (built locally as CuktechTray.exe, same file)
-size   PENDING
+size   11,151,360
 ver    0.5.7.0
-sha256 PENDING
+sha256 55768A358130A68B8EA59AD5D15B815AD7E3B9234653CD5AFBE790DD1611A40C
 
 file   CuktechTray-0.1.8-mac.zip    (packed by CI, unpacks to CuktechTray.app)
-size   PENDING
-sha256 PENDING
+size   1,623,257
+sha256 25E4258DB233E74D227CBC472774133850B447DD234E6FB7B0330727F943C215
 ```
 
 ## Requirements
