@@ -31,6 +31,10 @@ mac 面板从「一页纵向」改成**四个页签**，跟 Windows 版同构；
   CI 会抓 `panel-*.png` 传成 artifact
 - 版本 0.1.8 → **0.1.9**
 
+![mac 面板的四个页签](docs/mac-panel-tabs.png)
+
+![只有 C3 在输出时的曲线页（mac）](docs/mac-panel-chart-solo.png)
+
 ## 0.5.7 — 2026-11-28
 
 曲线页回答「单 C3 在输出，我怎么从曲线上看出来」这个问题（issue 里也有人问过同一个点）。

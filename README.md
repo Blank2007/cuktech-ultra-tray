@@ -35,6 +35,8 @@
 
 ![macOS 配对向导](docs/mac-wizard.png)
 
+![macOS 面板的四个页签：读数 / 控制 / 模式 / 曲线](docs/mac-panel-tabs.png)
+
 ---
 
 > ### 🤖 这个仓库的代码是 AI 写的

@@ -35,6 +35,8 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 
 ![macOS pairing wizard](docs/mac-wizard.png)
 
+![The four macOS panel tabs: readings, control, modes, chart](docs/mac-panel-tabs.png)
+
 ---
 
 > ### 🤖 The code in this repository was written by AI

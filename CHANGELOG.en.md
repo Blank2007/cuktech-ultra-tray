@@ -29,6 +29,10 @@ The macOS panel goes from one long page to **four tabs**, matching the Windows l
 - Screenshot self-check: `--panel-demo=read|control|mode|chart|chart-solo` puts one page in a plain window (synthetic data, no Bluetooth); CI captures `panel-*.png` artifacts
 - Version 0.1.8 -> **0.1.9**
 
+![The four macOS panel tabs](docs/mac-panel-tabs.png)
+
+![The macOS chart with only C3 delivering](docs/mac-panel-chart-solo.png)
+
 ## 0.5.7 — 2026-11-28
 
 The chart tab now answers "C3 is the only port delivering — how do I see that on the curve".
