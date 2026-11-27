@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import CuktechCore
 
 /// 采集结束后的结果面板。
@@ -10,6 +11,8 @@ struct CaptureResultView: View {
     var onClose: () -> Void
 
     @State private var copied = false
+    /// 导出成功后的文件路径（或失败原因），显示在按钮下面方便去 Finder 里找。
+    @State private var exportedPath: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,13 +86,24 @@ struct CaptureResultView: View {
                 metricRow("功率", "\(result.averageText) W", "\(result.peakText) W")
             }
 
-            Text("采集结果仅供参考 · 仅本次显示，不写入磁盘")
+            Text("采集结果仅供参考 · 不自动写盘，要留档点「导出 CSV」")
                 .font(.system(size: 9.5))
                 .foregroundColor(Theme.dim.opacity(0.85))
                 .padding(.top, 10)
 
+            if let path = exportedPath {
+                Text(path)
+                    .font(.system(size: 9))
+                    .foregroundColor(Theme.dim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(path)
+                    .padding(.top, 6)
+            }
+
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
+                pill("导出 CSV", prominent: false) { exportCSV() }
                 pill(copied ? "已复制" : "复制摘要", prominent: false) {
                     let pb = NSPasteboard.general
                     pb.clearContents()
@@ -104,6 +118,27 @@ struct CaptureResultView: View {
         .frame(width: 320)
         .background(Theme.background)
         .preferredColorScheme(.dark)
+    }
+
+    /// 导出逐秒数据。用系统保存面板而不是直接写进「下载」：
+    /// macOS 上用户习惯自己挑位置，硬塞目录反而像在乱放文件。
+    private func exportCSV() {
+        let panel = NSSavePanel()
+        panel.title = "导出逐秒数据"
+        panel.message = "每秒一行：时间、电压、电流、功率、是否带载"
+        panel.nameFieldStringValue = result.defaultFileName
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            // 前置 BOM：Excel 靠它认 UTF-8，否则中文表头打开就是乱码。
+            var data = Data([0xEF, 0xBB, 0xBF])
+            data.append(Data(result.csvText().utf8))
+            try data.write(to: url, options: .atomic)
+            exportedPath = url.path
+        } catch {
+            exportedPath = "导出失败：\(error.localizedDescription)"
+        }
     }
 
     private var reasonColor: Color {

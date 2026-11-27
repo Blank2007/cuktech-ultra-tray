@@ -11,6 +11,27 @@ import Foundation
 /// 这样做的代价是跨档那一秒会略微**少**算（比如 5V→20V 只按 5V 记），
 /// 但不会多算。采样越密、采集越长，这点误差占比越小。
 /// 反过来用梯形或多算，用户会看到一个比实际更大的电量，那更糟。
+/// 一个逐秒采样点。采集过程本身不落盘，只有用户点「导出 CSV」时才按这些点生成文本。
+///
+/// `t` 是相对采集开始的秒数（不是绝对时间）：导出去做图时横轴从 0 起最省事，
+/// 绝对时间只出现在文件名和摘要里。
+public struct CaptureSample: Sendable, Equatable {
+    public let t: Double
+    public let voltage: Double
+    public let current: Double
+    public let power: Double
+    /// 这一秒是否真的在输出。空载样本也记下来 —— 曲线要靠它断开，而不是补成 0 瓦。
+    public let live: Bool
+
+    public init(t: Double, voltage: Double, current: Double, power: Double, live: Bool) {
+        self.t = t
+        self.voltage = voltage
+        self.current = current
+        self.power = power
+        self.live = live
+    }
+}
+
 public struct CaptureAccumulator: Sendable {
     /// 采样次数（含空载样本）。
     public private(set) var sampleCount = 0
@@ -37,9 +58,17 @@ public struct CaptureAccumulator: Sendable {
     public private(set) var firstActiveAt: Date?
     public private(set) var lastActiveAt: Date?
 
+    /// 逐秒采样点，最多 `sampleCap` 个。只在内存里，用户点「导出 CSV」才变成文件。
+    public private(set) var samples: [CaptureSample] = []
+    /// 约 2 小时（每秒一个点）。再长就让导出文件大得没人愿意打开；
+    /// 采集本身不受影响，只是前 2 小时之后的点不再记，统计数字照常累计。
+    public static let sampleCap = 7200
+
     /// 上一个采样点。带 active 是因为「换档」只能在前后都带载时才算：
     /// 拔线那一刻电压从 9V 掉到 0V，差值够大，但那是拔线不是换档。
     private var prev: (v: Double, i: Double, t: Date, active: Bool)?
+    /// 第一个采样点的时刻，用来把 `samples` 里的时间换成「相对开始多少秒」。
+    private var firstSampleAt: Date?
 
     public init() {}
 
@@ -79,6 +108,16 @@ public struct CaptureAccumulator: Sendable {
         lastVoltage = d.voltage
         lastCurrent = d.current
         lastPower = power
+
+        // 逐秒留一份原始读数，供「导出 CSV」用。空载样本也记，不然曲线会连成一条假直线。
+        if firstSampleAt == nil { firstSampleAt = t }
+        if samples.count < Self.sampleCap {
+            samples.append(CaptureSample(t: t.timeIntervalSince(firstSampleAt ?? t),
+                                         voltage: d.voltage,
+                                         current: d.current,
+                                         power: power,
+                                         live: active))
+        }
 
         // 电压区间/峰值电流只在带载时更新：拔线后设备会报 0V，
         // 把那个 0V 记进区间会让「电压区间」显示成 0–9V，看着像掉压。
@@ -229,6 +268,40 @@ public struct CaptureResult: Sendable {
 
     public var activeDurationText: String { Self.duration(activeSeconds) }
     public var totalDurationText: String { Self.duration(totalSeconds) }
+
+    /// 导出 CSV 的默认文件名：`cuktech-capture-C1-20261127-220145.csv`。
+    /// 端口名与 Windows 版一致（C1/C2/C3/A），两边的导出文件可以直接放在一起比。
+    public var defaultFileName: String {
+        var port = portName.isEmpty ? "P\(portIndex)" : portName
+        for bad in ["/", "\\", ":", "?", "*", "|", "\"", "<", ">"] {
+            port = port.replacingOccurrences(of: bad, with: "_")
+        }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone.current
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return "cuktech-capture-\(port)-\(f.string(from: startedAt)).csv"
+    }
+
+    /// 逐秒数据导成 CSV：一行表头，之后每秒一行，行尾 CRLF。
+    ///
+    /// 数值一律按 `en_US_POSIX` 格式化。跟着系统区域走的话，法语/德语系统会把小数点
+    /// 写成逗号，整张表从这一行开始错列 —— 这种文件发给别人，Excel 一打开就是一团。
+    /// 列的顺序、精度、表头文字都与 Windows 版逐字一致，两边导出的文件可以直接对比。
+    public func csvText() -> String {
+        func num(_ v: Double, _ digits: Int) -> String {
+            String(format: "%.\(digits)f", locale: Locale(identifier: "en_US_POSIX"), v)
+        }
+        var out = "时间(s),电压(V),电流(A),功率(W),带载\r\n"
+        for s in stats.samples {
+            out += num(s.t, 1) + ","
+            out += num(s.voltage, 2) + ","
+            out += num(s.current, 3) + ","
+            out += num(s.power, 2) + ","
+            out += (s.live ? "1" : "0") + "\r\n"
+        }
+        return out
+    }
 
     /// 复制到剪贴板用的纯文本摘要。
     public var summaryText: String {

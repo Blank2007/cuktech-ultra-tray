@@ -31,6 +31,15 @@ final class TrayController: NSObject {
     /// 之前把 menu 挂死在 statusItem 上，结果左键点出来的是菜单，面板反而要再点一次）。
     private let statusMenu = NSMenu()
 
+    // MARK: - 更新检查
+
+    /// 右键菜单里的「检查更新…」与「启动时自动检查更新」。
+    private var checkUpdateItem: NSMenuItem!
+    private var checkOnStartItem: NSMenuItem!
+    /// 后台查到的新版本号；空串表示「不知道/没有」。菜单红点和菜单栏小点都看它。
+    private var newVersion = ""
+    /// 防重入：启动自查和用户点击可能撞在一起。
+    private var checkingUpdate = false
     init(settings: AppSettings) {
         self.settings = settings
         self.log = LogFile()
@@ -72,6 +81,17 @@ final class TrayController: NSObject {
                     self.apply(snap)
                 }
                 try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+
+        // 启动后自己在后台查一次新版本。等 8 秒是要让蓝牙握手先安顿下来：
+        // 刚起来那几秒 CPU 全用在 GATT 枚举上，这时候发网络请求纯属添乱。
+        // 查到只点红点、不弹窗 —— 一个常驻托盘的小工具，开机就弹对话框很讨厌。
+        if settings.checkUpdatesOnStart {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                self.runUpdateCheck(manual: false)
             }
         }
     }
@@ -200,7 +220,9 @@ final class TrayController: NSObject {
         let colorKey = color.map {
             "\($0.redComponent),\($0.greenComponent),\($0.blueComponent)"
         } ?? "auto"
-        let key = "\(text)|\(colorKey)|\(statusItem.length)|\(tip)"
+        // 有新版本时读数后面点个小点，这个状态也要进指纹，否则查到之后不会重画。
+        let flagged = !newVersion.isEmpty
+        let key = "\(text)|\(colorKey)|\(statusItem.length)|\(flagged)|\(tip)"
         guard force || key != lastRenderedTitleKey else { return }
         lastRenderedTitleKey = key
 
@@ -214,8 +236,19 @@ final class TrayController: NSObject {
         if let color {
             attrs[.foregroundColor] = color
         }
-        button.attributedTitle = NSAttributedString(string: text, attributes: attrs)
-        button.toolTip = tip
+        let title = NSMutableAttributedString(string: text, attributes: attrs)
+        if flagged {
+            // 只在文字模式点这个点：图标模式的图是模板图，塞角标会被菜单栏一起染色，
+            // 反色之后红点变黑点，反而像是画糊了。图标模式下改看菜单里那行的红点。
+            let dot: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 8, weight: .bold),
+                .foregroundColor: NSColor.systemRed,
+                .baselineOffset: 1.5,
+            ]
+            title.append(NSAttributedString(string: " ●", attributes: dot))
+        }
+        button.attributedTitle = title
+        button.toolTip = flagged ? "\(tip) · 有新版本 \(newVersion)" : tip
     }
 
     private func refreshMenuStatus() {
@@ -260,6 +293,15 @@ final class TrayController: NSObject {
         menu.addItem(.separator())
         menu.addItem(item("打开日志", #selector(openLog)))
         menu.addItem(item("显示配置文件", #selector(showConfig)))
+        menu.addItem(.separator())
+
+        checkUpdateItem = item("检查更新…", #selector(checkUpdates))
+        menu.addItem(checkUpdateItem)
+
+        checkOnStartItem = item("启动时自动检查更新", #selector(toggleCheckOnStart))
+        checkOnStartItem.state = settings.checkUpdatesOnStart ? .on : .off
+        menu.addItem(checkOnStartItem)
+
         menu.addItem(.separator())
         menu.addItem(item("关于", #selector(showAbout)))
         menu.addItem(.separator())
@@ -396,6 +438,129 @@ final class TrayController: NSObject {
 
     @objc private func showConfig() {
         NSWorkspace.shared.activateFileViewerSelecting([AppSettings.fileURL])
+    }
+
+    // MARK: - 更新检查
+
+    /// 菜单里「有新版」那行的小红点（9pt 实心圆）。放在菜单项的图标列里 ——
+    /// 打红字在深色菜单里反而糊，一个实心点最好认。
+    private static let updateDotImage: NSImage? = {
+        let side: CGFloat = 9
+        let img = NSImage(size: NSSize(width: side, height: side))
+        img.lockFocus()
+        NSColor.systemRed.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 0.5, y: 0.5, width: side - 1, height: side - 1)).fill()
+        img.unlockFocus()
+        img.isTemplate = false
+        return img
+    }()
+
+    /// 把「有新版本」画到菜单那行：行首红点 + 标题里带版本号。没新版本就恢复原样，不留残影。
+    private func refreshUpdateItem() {
+        guard let it = checkUpdateItem else { return }
+        if newVersion.isEmpty {
+            it.title = "检查更新…"
+            it.image = nil
+        } else {
+            it.title = "检查更新…（有 \(newVersion)）"
+            it.image = Self.updateDotImage
+        }
+    }
+
+    @objc private func checkUpdates() {
+        runUpdateCheck(manual: true)
+    }
+
+    @objc private func toggleCheckOnStart() {
+        settings.checkUpdatesOnStart.toggle()
+        checkOnStartItem.state = settings.checkUpdatesOnStart ? .on : .off
+        try? settings.save()
+        log.write("[update] 启动时自动检查更新 -> \(settings.checkUpdatesOnStart)")
+    }
+
+    /// 查一次新版本。
+    /// - Parameter manual: 用户点菜单（要把结果说清楚，弹窗） vs 启动自查（只在真有新版时安静点红点）。
+    private func runUpdateCheck(manual: Bool) {
+        guard !checkingUpdate else {
+            if manual { log.write("[update] 上一次还没查完，这次点击先忽略") }
+            return
+        }
+        checkingUpdate = true
+        if manual { statusLineItem.title = "正在检查更新…" }
+        Task { @MainActor [weak self] in
+            let outcome = await UpdateChecker.latestMacRelease()
+            guard let self else { return }
+            self.checkingUpdate = false
+            self.afterUpdateCheck(outcome, manual: manual)
+        }
+    }
+
+    /// 检查时状态行会临时变成「正在检查更新…」，查完得换回真实状态。
+    /// 不能直接用 refreshMenuStatus：还没配对时它会把「还没配对，右键「重新配对…」」这句冲掉。
+    private func restoreStatusLine() {
+        if session == nil {
+            statusLineItem.title = "还没配对，右键「重新配对…」走一遍向导"
+        } else {
+            refreshMenuStatus()
+        }
+    }
+
+    private func afterUpdateCheck(_ outcome: UpdateChecker.Outcome, manual: Bool) {
+        // 先恢复状态行，不然它会一直停在「正在检查更新…」
+        restoreStatusLine()
+        switch outcome {
+        case .failed(let why):
+            log.write("[update] 检查失败：\(why)")
+            if manual { presentAlert(title: "没查成", text: why) }
+
+        case .found(let rel):
+            let newer = UpdateChecker.isNewer(rel.version, than: BuildInfo.version)
+            log.write("[update] 线上 mac 最新 \(rel.version)，本机 \(BuildInfo.version)，"
+                      + (newer ? "有新版本" : "已是最新"))
+            if !newer {
+                if !newVersion.isEmpty {
+                    newVersion = ""
+                    refreshUpdateItem()
+                    updateTitle(force: true)
+                }
+                if manual {
+                    presentAlert(title: "已经是最新版",
+                                 text: "本机 \(BuildInfo.version)，GitHub 上能下到的 mac 版也是这个号。")
+                }
+                return
+            }
+            let firstTime = newVersion != rel.version
+            newVersion = rel.version
+            refreshUpdateItem()
+            updateTitle(force: true)
+            if manual {
+                presentAlert(title: "有新版本 \(rel.version)",
+                             text: "本机是 \(BuildInfo.version)。下个 zip 解压替换掉旧的就成，配对信息和日志都保留。",
+                             url: rel.assetURL ?? rel.pageURL,
+                             urlButton: "去下载")
+            } else if firstTime {
+                log.write("[update] 启动自查发现有新版本 \(rel.version)，菜单与菜单栏都点了红点")
+            }
+        }
+    }
+
+    /// 只有用户主动点「检查更新…」才走这里：他是来要答案的，得给个准话。
+    private func presentAlert(title: String, text: String,
+                              url: URL? = nil, urlButton: String = "打开下载页") {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        if url != nil {
+            a.addButton(withTitle: urlButton)
+            a.addButton(withTitle: "以后再说")
+        } else {
+            a.addButton(withTitle: "知道了")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let resp = a.runModal()
+        if let url, resp == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func showAbout() {

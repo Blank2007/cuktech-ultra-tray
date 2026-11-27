@@ -26,13 +26,17 @@ public struct AppSettings: Codable, Sendable {
     /// 老配置没有这个键，按 **false** 算 —— 0.1.6 默认开，结果 26/27 上把面板冲成中灰、次要文字看不清
     /// （issue #6），0.1.7 起改成默认关、要的话在托盘菜单里自己勾。
     public var glassPanel: Bool = false
+    /// 启动后是否自己在后台查一次新版本（约 8 秒后，等蓝牙先连上）。
+    /// 查到就在菜单那行点个红点，不弹窗；不想要就把它改成 false。
+    /// 老配置没有这个键，按 **true** 算 —— 和 Windows 版一致。
+    public var checkUpdatesOnStart: Bool = true
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case mac, tokenHex, pollInterval, showWattsInMenuBar, privacyAccepted
         case peripheralId, alwaysOnTop
-        case fixedMenuBarWidth, glassPanel
+        case fixedMenuBarWidth, glassPanel, checkUpdatesOnStart
     }
 
     /// 手写解码：缺字段一律回落到默认值，别让新增字段把老用户的 config.json 判成坏文件。
@@ -48,6 +52,7 @@ public struct AppSettings: Codable, Sendable {
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? false
         fixedMenuBarWidth = try c.decodeIfPresent(Bool.self, forKey: .fixedMenuBarWidth) ?? true
         glassPanel = try c.decodeIfPresent(Bool.self, forKey: .glassPanel) ?? false
+        checkUpdatesOnStart = try c.decodeIfPresent(Bool.self, forKey: .checkUpdatesOnStart) ?? true
     }
 
     public static var directory: URL {

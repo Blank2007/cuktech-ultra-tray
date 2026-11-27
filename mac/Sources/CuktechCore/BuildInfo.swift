@@ -23,6 +23,9 @@ public enum BuildInfo {
     /// 0.1.7：修 issue #6（@editwe）——0.1.6 在 macOS 26/27 上把面板冲成中灰、次要文字看不清。
     ///        玻璃底统一退回 NSVisualEffectView(.popover / behindWindow)，底色不再压到 0.55（改成 0.9），
     ///        且「面板玻璃质感」改成默认**关**（老配置里写了 true 的继续生效）。
-    public static let version = "0.1.7"
+    /// 0.1.8：单口采集可以「导出 CSV」（逐秒一行，与 Windows 版逐字同格式、同 BOM）；
+    ///        启动约 8 秒后自己在后台查一次新版本，有新版本就在菜单那行点红点，不弹窗；
+    ///        托盘菜单新增「检查更新…」与「启动时自动检查更新」。
+    public static let version = "0.1.8"
     public static let channel = "mac"
 }

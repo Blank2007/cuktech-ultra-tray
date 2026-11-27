@@ -114,4 +114,41 @@ final class CaptureTests: XCTestCase {
         XCTAssertEqual(CaptureResult.duration(3720), "1 小时 02 分")
         XCTAssertTrue(r.summaryText.contains("充入电量：0.36 Wh"))
     }
+
+    /// 导出的 CSV：中文表头、定点小数、行尾 CRLF，空载那秒也要有一行（live=0）。
+    /// 用 CRLF 而不是 LF：Windows 版就是这么写的，两个平台的导出文件才能直接 diff。
+    func testCsvExport() {
+        var acc = CaptureAccumulator()
+        let t0 = Date()
+        for i in 0...2 { acc.add(sample(9.0, 2.0), at: t0.addingTimeInterval(Double(i))) }
+        acc.add(sample(0, 0, state: 0x00), at: t0.addingTimeInterval(3))   // 拔掉
+        let r = CaptureResult(portIndex: 1, startedAt: t0, endedAt: t0.addingTimeInterval(4),
+                              stats: acc, reason: .noLoad, firmware: "2.1.2_0079")
+
+        XCTAssertEqual(acc.samples.count, 4)
+        let lines = acc.samples.map { $0.t }
+        XCTAssertEqual(lines, [0, 1, 2, 3])
+        XCTAssertTrue(acc.samples[3].live == false)
+
+        let csv = r.csvText()
+        let rows = csv.components(separatedBy: "\r\n")
+        XCTAssertEqual(rows.first, "时间(s),电压(V),电流(A),功率(W),带载")
+        XCTAssertEqual(rows.count, 6)   // 表头 + 4 行 + 结尾那个空串
+        XCTAssertEqual(rows[1], "0.0,9.00,2.000,18.00,1")
+        XCTAssertEqual(rows[4], "3.0,0.00,0.000,0.00,0")
+
+        XCTAssertTrue(r.defaultFileName.hasPrefix("cuktech-capture-C1-"))
+        XCTAssertTrue(r.defaultFileName.hasSuffix(".csv"))
+    }
+
+    /// 采样点有上限（约 2 小时）。超了就不再记，但统计数字照常累计，导出也不会撑爆。
+    func testSampleCap() {
+        var acc = CaptureAccumulator()
+        let t0 = Date()
+        for i in 0...(CaptureAccumulator.sampleCap + 10) {
+            acc.add(sample(9.0, 2.0), at: t0.addingTimeInterval(Double(i)))
+        }
+        XCTAssertEqual(acc.samples.count, CaptureAccumulator.sampleCap)
+        XCTAssertGreaterThan(acc.energyWh, 0)
+    }
 }
