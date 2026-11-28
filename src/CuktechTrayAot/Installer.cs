@@ -28,7 +28,13 @@ internal static class Installer
     public static string DefaultDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "CuktechTray");
 
-    public static string SelfExe => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, ExeName);
+    /// <summary>
+    /// 进程启动时系统记下的 exe 路径。文件名在运行中被自己改掉之后（见 Updater.SelfHealName），
+    /// 这里换成新路径 —— 不换的话自更新、卸载还会按已经不存在的旧名字找文件。
+    /// </summary>
+    public static string? OverrideSelfExe;
+
+    public static string SelfExe => OverrideSelfExe ?? Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, ExeName);
 
     public static string SelfDir => Path.GetDirectoryName(Path.GetFullPath(SelfExe)) ?? AppContext.BaseDirectory;
 

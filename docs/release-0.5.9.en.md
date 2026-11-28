@@ -4,8 +4,9 @@
 
 In one line: **self-update no longer leaves the old version number in the file name**
 (`CuktechTray-0.5.8-win.exe` becomes `CuktechTray-0.5.9-win.exe` after the update, with the shortcuts, the autostart
-value and the uninstall entry repointed along with it), and **per-port capture CSVs now default to the program's own
-folder** instead of the system Documents folder. Nothing changed on the macOS side; it stays at 0.1.9.
+value and the uninstall entry repointed along with it), **a copy you overwrote by hand renames itself on the next
+launch**, and **per-port capture CSVs now default to the program's own folder** instead of the system Documents
+folder. Nothing changed on the macOS side; it stays at 0.1.9.
 
 ## What changed
 
@@ -20,6 +21,19 @@ downloaded as: after a few update checks the binary was 0.5.x while the file sti
   `HKCU\...\Run` autostart value and the uninstall entry (DisplayIcon / UninstallString / InstallLocation /
   DisplayVersion). Each one is only touched when it really points at the old file
 * The installed copy keeps its fixed `CuktechTray.exe` name — it never had a version in it
+
+### A copy you overwrote by hand fixes its own name at startup
+
+The previous change only covered the self-update path. Most people simply **download the new build and overwrite the
+old file** — the name stays as it was, which is exactly why "I installed it and nothing changed" kept coming up.
+
+Every launch now looks at its own name first: if it looks like `CuktechTray-<version>-win.exe` and that version does
+not match the real version inside the exe, it renames itself in place (renaming a running exe on the same disk is
+allowed), repoints the four places listed above, and carries on starting. This happens **before** the single-instance
+check: when a copy is already running in the tray, launching the new exe just hands over and exits, so anything placed
+after that check would never get to rename anything.
+
+The installed copy keeps its fixed `CuktechTray.exe` name (no version in it), so this step does nothing there.
 
 ### Generated files stay next to the program
 
@@ -42,27 +56,28 @@ downloaded as: after a few update checks the binary was 0.5.x while the file sti
 * **Windows, installed copy**: tray menu -> "Check for updates"; it downloads, verifies SHA256 and replaces itself.
   Note that **this update changes the update path itself**, so the name starts following along from 0.5.9 onwards;
   the 0.5.8 -> 0.5.9 hop is performed by the old code, which leaves the name alone
-* **Windows, portable**: overwrite the old `CuktechTray.exe`, keep your `settings.json`
+* **Windows, portable**: just overwrite the old `CuktechTray.exe` (no need to rename it yourself — the first
+  launch turns it into `CuktechTray-0.5.9-win.exe`), keep your `settings.json`
 * **macOS**: no mac changes this time; 0.1.9 can stay as is
 
 ## Files
 
 | File | Size | Notes |
 | --- | --- | --- |
-| `CuktechTray-0.5.9-win.exe` | **10.7 MB** (11,197,440 bytes) | Windows: portable build and installer in one file |
-| `CuktechTray-0.1.9-mac.zip` | **1.7 MB** (1,716,737 bytes) | macOS: literally the same file as in the 0.5.8 release (0.1.9 sources unchanged) |
+| `CuktechTray-0.5.9-win.exe` | **10.7 MB** (11,198,464 bytes) | Windows: portable build and installer in one file |
+| `CuktechTray-0.1.9-mac.zip` | **1.7 MB** (1,716,742 bytes) | macOS: the same 0.1.9 .app, zipped again, so its hash differs from the 0.5.8 build |
 
 ## Checksums
 
 ```
 file   CuktechTray-0.5.9-win.exe   (built locally as CuktechTray.exe, same bytes)
-size   11,197,440 bytes
+size   11,198,464 bytes
 ver    0.5.9.0
-SHA256 6F94829BE572CC7DE88FBFE458C8757D17C94D7DE9F8930CB6786C31449DB60C
+SHA256 FE2E496F0D1DE85AAC36B7368E85CE717C191DFD1CE8154B66A62F29725B5EA2
 
 file   CuktechTray-0.1.9-mac.zip     (unzips to CuktechTray.app)
-size   1,716,737 bytes
-SHA256 A09C85EACFA2BE47C3E115911D4947A89B52AC73D266D15366A09DA5D5541CA3
+size   1,716,742 bytes
+SHA256 2095C285C08D64C8185337C1B691D6ACB6930AC1577DED95D1519E149FB19E79
 ```
 
 ## Requirements
@@ -75,8 +90,8 @@ SHA256 A09C85EACFA2BE47C3E115911D4947A89B52AC73D266D15366A09DA5D5541CA3
 
 * The Windows exe is **not code-signed**; the first run shows the blue SmartScreen box — "More info -> Run anyway"
 * The macOS app is ad-hoc signed; the first launch needs "Open Anyway" under Privacy & Security
-* For the 0.5.8 -> 0.5.9 hop the file name is still decided by the old code (the rename logic only takes effect once
-  0.5.9 is running); from 0.5.9 to 0.6.x you will see the name follow the update
+* Builds before 0.5.9 have no startup self-heal, so the "check for updates" hop out of 0.5.8 leaves the name alone;
+  drop the 0.5.9 file in place and launch it once — the name gets corrected (a `[selfheal]` line lands in the log)
 
 ## Thanks
 

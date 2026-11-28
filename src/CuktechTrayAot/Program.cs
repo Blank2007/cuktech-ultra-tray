@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace CuktechTray;
 
 internal static class Program
@@ -59,6 +61,13 @@ internal static class Program
     private static string OutFile(string[] args, string name) =>
         System.IO.Path.Combine(OutDir(args), name);
 
+    /// <summary>诊断 / 自测类的启动（这些不参与自愈改名，免得渲染任务被重启打断）。</summary>
+    private static bool DiagnosticStart(string[] args) => args.Any(a =>
+        a.Equals("--selftest", StringComparison.OrdinalIgnoreCase) ||
+        a.Equals("--update-selftest", StringComparison.OrdinalIgnoreCase) ||
+        a.StartsWith("--render", StringComparison.OrdinalIgnoreCase) ||
+        a.EndsWith("-probe", StringComparison.OrdinalIgnoreCase));
+
     private static int Real(string[] args)
     {
         // 安装 / 卸载是一次性动作：不进消息循环、不抢单实例，跑完直接返回
@@ -74,6 +83,12 @@ internal static class Program
                 + (r.Ok ? " latest=" + r.Latest + " via=" + r.Via : " error=" + r.Error));
             return r.Ok ? 0 : 1;
         }
+
+        // 文件名里的版本号跟 exe 里的真实版本对不上（用户把新版直接覆盖到旧文件上，或者更新链路
+        // 本身还是旧代码），就地改名。这一步必须放在单实例检查之前：托盘里已经有一份在跑的时候
+        // 再双击新 exe 会直接「让位退出」，那样就永远改不到名字。改名不重启进程，改完继续跑 —
+        // 安装版固定叫 CuktechTray.exe，名字里没有版本号，这步什么都不做。
+        if (!DiagnosticStart(args)) Updater.SelfHealName();
 
         // --standalone：诊断用（--render / 各种 *-probe），不参与单实例检查。
         // 之所以要它：真机上正经装着的那份正在跑时会占着单实例互斥体，

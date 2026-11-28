@@ -21,7 +21,9 @@ Click the tray icon (or the digits) and the panel opens with voltage / current /
 * Talks to the charger over **direct Bluetooth BLE** (our own implementation of Xiaomi MIoT encrypted authentication) — no gateway, no Mi Home app running in the background, and no network traffic once connected
 * The whole program is **one exe, 10.7 MB**, and the target machine needs no .NET — that same file is the portable build, the installer and the updater
 * Updating does not mean downloading another installer: one click on "Check for updates" and it replaces itself,
-  version number in the file name included (`CuktechTray-0.5.8-win.exe` becomes `CuktechTray-0.5.9-win.exe`)
+  version number in the file name included (`CuktechTray-0.5.8-win.exe` becomes `CuktechTray-0.5.9-win.exe`);
+  and if you would rather overwrite the old file by hand, you do not have to rename it — since 0.5.9 the program
+  corrects its own name to match the build on startup
 * Tens of MB resident, sits quietly in the tray — no popups, no desktop clutter
 
 > 🍎 **The macOS build lives in [`mac/`](mac/README.md)**: same protocol, same colour rules, except the number goes into the

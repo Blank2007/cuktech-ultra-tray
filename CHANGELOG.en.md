@@ -16,6 +16,16 @@ folder — both fixed.
     the file is replaced under the new name, the old name is deleted, and `Installer.FollowExeRename` repoints
     the HKCU autostart value, the desktop / Start-menu shortcuts and the uninstall entry (no dangling links)
   * The installed copy keeps its fixed `CuktechTray.exe` name — it never had a version in it
+* **Startup self-heal corrects the name to the real version** (`Updater.SelfHealName` / `Installer.OverrideSelfExe`)
+  * The rename above is not enough: when the new build is **overwritten by hand** onto the old file (or the update runs
+    on old code), the name stays at the old version — that is exactly where "I installed it and nothing changed" came from
+  * Every launch now checks: if the name looks like `xxx-<version>-win.exe` and the version inside the exe differs,
+    it renames itself in place (renaming a running exe on the same volume is allowed), repoints the autostart value,
+    the shortcuts and the uninstall entry, and `Installer.OverrideSelfExe` makes the rest of this process (self-update,
+    uninstall) use the new path
+  * This runs **before** the single-instance check: with a copy already in the tray, launching the new exe hands over
+    and exits, so a check placed later would never rename anything
+  * The installed copy keeps its fixed `CuktechTray.exe` name (no version in it) — this step does nothing there
 * **Single-port capture CSVs default to the install directory** (`CaptureWindow.ExportCsv`)
   * Installed: `%LOCALAPPDATA%\Programs\CuktechTray\captures\`
   * Portable: `captures\` next to the exe

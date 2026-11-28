@@ -14,6 +14,15 @@
     替换到新名字、删掉旧名字，再调 `Installer.FollowExeRename` 把开机自启项、桌面 / 开始菜单快捷方式、
     卸载信息里的路径一起改指过去，不留指向不存在文件的死链
   * 固定名叫 `CuktechTray.exe` 的安装版不受影响（名字本来就不带版本号）
+* **启动时自己把文件名纠正成真实版本号**（`Updater.SelfHealName` / `Installer.OverrideSelfExe`）
+  * 光有上面那条还不够：如果是**手动**把新版下载下来覆盖到旧文件上（不走自动更新），
+    或者更新的时候跑的还是旧代码，文件名照样停在旧版本号上 —— 这正是「装完还是没变」的来路
+  * 现在每次启动都会看一眼：文件名形如 `xxx-<版本>-win.exe` 但版本号跟 exe 里的真实版本不一致，
+    就地把自己改名成正确版本号（同卷重命名正在运行的 exe 是允许的），再把自启项、快捷方式、
+    卸载信息一起改指过去；`Installer.OverrideSelfExe` 让本进程后面的自更新 / 卸载都按新名字走
+  * 这一步排在单实例检查**之前**：托盘里已经有一份在跑时再双击新 exe 会「让位退出」，
+    放在后面就永远改不到名字
+  * 安装版固定叫 `CuktechTray.exe`（名字里没有版本号），这步什么都不做
 * **单口采集导出的 CSV 默认落在安装目录**（`CaptureWindow.ExportCsv`）
   * 装过本机的：`%LOCALAPPDATA%\Programs\CuktechTray\captures\`
   * 绿色版：exe 旁边的 `captures\`

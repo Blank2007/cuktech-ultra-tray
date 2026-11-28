@@ -66,6 +66,48 @@ internal static class Updater
         }
     }
 
+    /// <summary>
+    /// 启动时把文件名里的版本号纠正成真实版本号（名字形如 xxx-&lt;a.b.c&gt;[-win].exe 才会被碰）。
+    /// 为什么需要：用户拿到新版常常是「直接覆盖到旧文件上」，更新链路本身也可能是旧代码（只会原地覆盖），
+    /// 两种情况下文件名都会停在旧版本号上，从资源管理器看就像「更新没生效」。
+    /// 升级 / 降级都纠正（以 exe 资源里的版本为准），安装版固定叫 CuktechTray.exe，名字里没有版本号，不会被动。
+    /// 改名之后由调用方决定要不要用新名字重启自己。
+    /// </summary>
+    public static string? SelfHealName()
+    {
+        try
+        {
+            string self = Installer.SelfExe;
+            string name = Path.GetFileName(self);
+            Match m = Regex.Match(name, @"^(?<head>.+?)-(?<ver>\d+\.\d+\.\d+)(?<tail>(?:-win)?\.exe)$", RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+
+            string? ver = ExeVersionOf(self);
+            if (ver is null || ver == m.Groups["ver"].Value) return null;
+
+            string dir = Path.GetDirectoryName(self) ?? ".";
+            string candidate = m.Groups["head"].Value + "-" + ver + m.Groups["tail"].Value;
+            string dest = Path.Combine(dir, candidate);
+            if (File.Exists(dest) && !Installer.SamePath(dest, self))
+            {
+                // 同目录里已经有一份名字正确的（上次改名留下的 / 用户自己又下了一份），不去动它
+                LogSink.Write("[selfheal] 同目录已有 " + candidate + "，跳过改名");
+                return null;
+            }
+
+            File.Move(self, dest); // 同卷重命名正在运行的 exe 是允许的
+            Installer.OverrideSelfExe = dest; // 本进程后面的人生都按新名字走
+            LogSink.Write("[selfheal] 文件名里的版本号纠正：" + name + " -> " + candidate);
+            Installer.FollowExeRename(self, dest);
+            return dest;
+        }
+        catch (Exception ex)
+        {
+            LogSink.Write("[selfheal] 改名失败：" + ex.Message);
+            return null;
+        }
+    }
+
     /// <summary>从 exe 的版本资源里取 x.y.z（拿不到返回 null）。</summary>
     public static string? ExeVersionOf(string exePath)
     {
